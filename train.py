@@ -377,6 +377,8 @@ def main():
     utils.setup_default_logging()
     args, args_text = _parse_args()
 
+    print(args)
+
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
@@ -762,6 +764,20 @@ def main():
         _logger.info(
             f'Scheduled epochs: {num_epochs}. LR stepped per {"epoch" if lr_scheduler.t_in_epochs else "update"}.')
 
+    config = {"model": args.model,
+              "dataset":  "imagenet1k",
+              "batch_size": args.batch_size,
+              "gradient_accumulation": args.grad_accum_steps,
+              "opt": {"name": args.opt, "lr": args.lr, "weight_decay": args.weight_decay, "momentum": args.momentum, "lr_schedule": args.sched},
+              "max_epoch": num_epochs,
+              "run_id": 0
+              }
+    
+    result = {"config": config,
+              "summary": dict(),
+              "history": list()
+              }
+
     try:
         for epoch in range(start_epoch, num_epochs):
             if hasattr(dataset_train, 'set_epoch'):
@@ -769,7 +785,7 @@ def main():
             elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
 
-            train_metrics = train_one_epoch(
+            _ = train_one_epoch(
                 epoch,
                 model,
                 loader_train,
@@ -789,6 +805,15 @@ def main():
                 if utils.is_primary(args):
                     _logger.info("Distributing BatchNorm running means and vars")
                 utils.distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
+
+
+            train_metrics = validate(
+                model,
+                loader_train,
+                train_loss_fn,
+                args,
+                amp_autocast=amp_autocast,
+            )
 
             eval_metrics = validate(
                 model,

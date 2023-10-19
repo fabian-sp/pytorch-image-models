@@ -48,3 +48,20 @@ def update_summary(
         if write_header:  # first iteration (epoch == 1 can't be used)
             dw.writeheader()
         dw.writerow(rowd)
+
+def update_history(epoch,
+        train_metrics,
+        eval_metrics,
+        lr,
+        filename,
+        log_wandb=False):
+    
+    rowd = OrderedDict(epoch=epoch)
+    rowd.update([('train_' + k, v) for k, v in train_metrics.items()])
+    rowd.update([('val_' + k, v) for k, v in eval_metrics.items()])
+    rowd['learning_rate'] = lr
+
+    if log_wandb:
+        wandb.log(rowd)
+    
+    return rowd
