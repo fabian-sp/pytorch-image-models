@@ -22,6 +22,7 @@ from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
 from functools import partial
+import json
 
 import torch
 import torch.nn as nn
@@ -768,7 +769,12 @@ def main():
               "dataset":  "imagenet1k",
               "batch_size": args.batch_size,
               "gradient_accumulation": args.grad_accum_steps,
-              "opt": {"name": args.opt, "lr": args.lr, "weight_decay": args.weight_decay, "momentum": args.momentum, "lr_schedule": args.sched},
+              "opt": {"name": args.opt, 
+                      "lr": args.lr, 
+                      "weight_decay": args.weight_decay, 
+                      "momentum": args.momentum, 
+                      "lr_schedule": args.sched,
+                      **args.opt_args},
               "max_epoch": num_epochs,
               "run_id": 0
               }
@@ -777,6 +783,7 @@ def main():
               "summary": dict(),
               "history": list()
               }
+    exp_id = f'{args.model}_name_{args.opt}_lr_{args.lr}'
 
     try:
         for epoch in range(start_epoch, num_epochs):
@@ -839,16 +846,21 @@ def main():
 
             if output_dir is not None:
                 lrs = [param_group['lr'] for param_group in optimizer.param_groups]
-                utils.update_summary(
+                this_history = utils.update_history(
                     epoch,
                     train_metrics,
                     eval_metrics,
-                    filename=os.path.join(output_dir, 'summary.csv'),
                     lr=sum(lrs) / len(lrs),
-                    write_header=best_metric is None,
                     log_wandb=args.log_wandb and has_wandb,
                 )
 
+                # Update history
+                result["history"].append(this_history)
+
+                # Store
+                with open(os.path.join(output_dir, exp_id) + '.json', "w") as f:
+                    json.dump(result, f, indent=4, sort_keys=True)
+    
             if saver is not None:
                 # save proper checkpoint with eval metric
                 save_metric = eval_metrics[eval_metric]
@@ -950,7 +962,12 @@ def train_one_epoch(
                             value=args.clip_grad,
                             mode=args.clip_mode,
                         )
-                    optimizer.step()
+                    # closure = lambda: _loss
+                    
+                    if args.opt == 'momo-adam':
+                        optimizer.step(loss=_loss)
+                    else:
+                        optimizer.step()
 
         if has_no_sync and not need_update:
             with model.no_sync():

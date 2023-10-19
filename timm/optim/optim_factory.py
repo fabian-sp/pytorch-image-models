@@ -28,6 +28,8 @@ from .radam import RAdam
 from .rmsprop_tf import RMSpropTF
 from .sgdp import SGDP
 
+from momo import MomoAdam
+
 
 _logger = logging.getLogger(__name__)
 
@@ -288,6 +290,10 @@ def create_optimizer_v2(
         optimizer = optim.SGD(parameters, momentum=momentum, nesterov=False, **opt_args)
     elif opt_lower == 'sgdp':
         optimizer = SGDP(parameters, momentum=momentum, nesterov=True, **opt_args)
+
+    # MoMo
+    elif opt_lower == 'momo-adam':
+        optimizer = MomoAdam(parameters, **opt_args)
 
     # adaptive
     elif opt_lower == 'adam':

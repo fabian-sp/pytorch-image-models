@@ -53,7 +53,6 @@ def update_history(epoch,
         train_metrics,
         eval_metrics,
         lr,
-        filename,
         log_wandb=False):
     
     rowd = OrderedDict(epoch=epoch)
