@@ -1,0 +1,28 @@
+---
+
+experiment: vit_tiny_patch16_224
+model: vit_tiny_patch16_224
+data_dir: /data/imagenet 
+
+epochs: 1
+batch_size: 512
+
+sched: cosine
+warmup_epochs: 5
+
+# Data and Model
+
+hflip: 0.5
+aa: rand-m6-mstd0.5
+mixup: 0.1
+cutmix: 1.0
+crop_pct: 0.9
+bce_loss: true
+
+# Optimizer
+lr: 0.001
+opt: adamw
+weight_decay: 0.1
+
+# Other
+j: 8

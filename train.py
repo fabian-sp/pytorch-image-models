@@ -379,6 +379,7 @@ def main():
     args, args_text = _parse_args()
 
     print(args)
+    
 
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -708,6 +709,7 @@ def main():
     best_metric = None
     best_epoch = None
     saver = None
+
     output_dir = None
     if utils.is_primary(args):
         if args.experiment:
@@ -733,6 +735,8 @@ def main():
         )
         with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
             f.write(args_text)
+
+    print("Output directory: ", output_dir)
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
@@ -843,24 +847,31 @@ def main():
                     log_suffix=' (EMA)',
                 )
                 eval_metrics = ema_eval_metrics
+            
+            ###################################
+            ## Store output in step-back format
+            custom_output_dir = os.path.join(output_dir, 'custom')
+            if not os.path.exists(custom_output_dir):
+                os.mkdir(custom_output_dir)
 
-            if output_dir is not None:
-                lrs = [param_group['lr'] for param_group in optimizer.param_groups]
-                this_history = utils.update_history(
-                    epoch,
-                    train_metrics,
-                    eval_metrics,
-                    lr=sum(lrs) / len(lrs),
-                    log_wandb=args.log_wandb and has_wandb,
-                )
+            lrs = [param_group['lr'] for param_group in optimizer.param_groups]
+            this_history = utils.update_history(
+                epoch,
+                train_metrics,
+                eval_metrics,
+                lr=sum(lrs) / len(lrs),
+                log_wandb=args.log_wandb and has_wandb,
+            )
 
-                # Update history
-                result["history"].append(this_history)
+            # Update history
+            result["history"].append(this_history)
 
-                # Store
-                with open(os.path.join(output_dir, exp_id) + '.json', "w") as f:
-                    json.dump(result, f, indent=4, sort_keys=True)
-    
+            # Store
+            with open(os.path.join(custom_output_dir, exp_id) + '.json', "w") as f:
+                json.dump(result, f, indent=4, sort_keys=True)
+
+            ##################################
+
             if saver is not None:
                 # save proper checkpoint with eval metric
                 save_metric = eval_metrics[eval_metric]
