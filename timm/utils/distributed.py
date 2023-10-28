@@ -123,11 +123,14 @@ def init_distributed_device(args):
             args.rank = torch.distributed.get_rank()
         args.distributed = True
 
+    print("Is distributed?", args.distributed)
+
     if torch.cuda.is_available():
         if args.distributed:
             device = 'cuda:%d' % args.local_rank
         else:
             device = 'cuda:0'
+        print("Device: ", device)
         torch.cuda.set_device(device)
     else:
         device = 'cpu'

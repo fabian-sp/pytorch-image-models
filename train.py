@@ -29,6 +29,7 @@ import torch.nn as nn
 import torchvision.utils
 import yaml
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
+import numpy as np
 
 from timm import utils
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
@@ -711,6 +712,8 @@ def main():
     saver = None
 
     output_dir = None
+    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay)
+
     if utils.is_primary(args):
         if args.experiment:
             exp_name = args.experiment
@@ -720,7 +723,7 @@ def main():
                 safe_model_name(args.model),
                 str(data_config['input_size'][-1])
             ])
-        output_dir = utils.get_outdir(args.output if args.output else './output/train', exp_name)
+        output_dir = utils.get_outdir(args.output if args.output else './output/train', exp_name, opt_run_name)
         decreasing = True if eval_metric == 'loss' else False
         saver = utils.CheckpointSaver(
             model=model,
@@ -740,7 +743,7 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
-            wandb.init(project=args.experiment, config=args)
+            wandb.init(project=args.experiment, config=args, name=opt_run_name)
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "
@@ -769,6 +772,8 @@ def main():
         _logger.info(
             f'Scheduled epochs: {num_epochs}. LR stepped per {"epoch" if lr_scheduler.t_in_epochs else "update"}.')
 
+    optimizer_args = optimizer_kwargs(cfg=args) | args.opt_kwargs
+
     config = {"model": args.model,
               "dataset":  "imagenet1k",
               "batch_size": args.batch_size,
@@ -778,7 +783,8 @@ def main():
                       "weight_decay": args.weight_decay, 
                       "momentum": args.momentum, 
                       "lr_schedule": args.sched,
-                      **args.opt_args},
+                      **optimizer_args,
+                    },
               "max_epoch": num_epochs,
               "run_id": 0
               }
@@ -787,8 +793,8 @@ def main():
               "summary": dict(),
               "history": list()
               }
-    exp_id = f'{args.model}_name_{args.opt}_lr_{args.lr}'
-
+    
+    
     try:
         for epoch in range(start_epoch, num_epochs):
             if hasattr(dataset_train, 'set_epoch'):
@@ -796,7 +802,7 @@ def main():
             elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
 
-            _ = train_one_epoch(
+            train_metrics = train_one_epoch(
                 epoch,
                 model,
                 loader_train,
@@ -818,13 +824,13 @@ def main():
                 utils.distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
 
 
-            train_metrics = validate(
-                model,
-                loader_train,
-                train_loss_fn,
-                args,
-                amp_autocast=amp_autocast,
-            )
+            # train_metrics = validate(
+            #     model,
+            #     loader_train,
+            #     train_loss_fn,
+            #     args,
+            #     amp_autocast=amp_autocast,
+            # )
 
             eval_metrics = validate(
                 model,
@@ -850,25 +856,32 @@ def main():
             
             ###################################
             ## Store output in step-back format
-            custom_output_dir = os.path.join(output_dir, 'custom')
-            if not os.path.exists(custom_output_dir):
-                os.mkdir(custom_output_dir)
+            ## Only store for first worker (where output dir is not None)
+            if output_dir is not None:
+                json_output_dir = os.path.join('output', 'json', exp_name)
+                if not os.path.exists(json_output_dir):
+                    os.mkdir(json_output_dir)
 
-            lrs = [param_group['lr'] for param_group in optimizer.param_groups]
-            this_history = utils.update_history(
-                epoch,
-                train_metrics,
-                eval_metrics,
-                lr=sum(lrs) / len(lrs),
-                log_wandb=args.log_wandb and has_wandb,
-            )
+                lrs = [param_group['lr'] for param_group in optimizer.param_groups]
+                this_history = utils.update_history(
+                    epoch,
+                    train_metrics,
+                    eval_metrics,
+                    lr=sum(lrs) / len(lrs),
+                    log_wandb=args.log_wandb and has_wandb,
+                )
+                
+                # Store step size list
+                if optimizer.state.get('step_size_list'):
+                    this_history['step_size_list'] = [float(np.format_float_scientific(t,4)) for t in optimizer.state['step_size_list']]
+                    optimizer.state['step_size_list'] = list()
 
-            # Update history
-            result["history"].append(this_history)
+                # Update history
+                result["history"].append(this_history)
 
-            # Store
-            with open(os.path.join(custom_output_dir, exp_id) + '.json', "w") as f:
-                json.dump(result, f, indent=4, sort_keys=True)
+                # Store
+                with open(os.path.join(json_output_dir, opt_run_name) + '.json', "w") as f:
+                    json.dump(result, f, indent=4, sort_keys=True)
 
             ##################################
 
