@@ -356,6 +356,8 @@ group.add_argument('--use-multi-epochs-loader', action='store_true', default=Fal
                    help='use the multi-epochs-loader to save time at the beginning of every epoch')
 group.add_argument('--log-wandb', action='store_true', default=False,
                    help='log training and validation metrics to wandb')
+group.add_argument('--run-id', type=int, default=0, metavar='S',
+                   help='For running repetitions')
 
 
 def _parse_args():
@@ -411,6 +413,10 @@ def main():
             assert args.amp_dtype in ('float16', 'bfloat16')
         if args.amp_dtype == 'bfloat16':
             amp_dtype = torch.bfloat16
+
+    # if run_id == 0, then default seed is 42
+    args.seed += args.run_id
+    print(f"Seed {args.seed}.")
 
     utils.random_seed(args.seed, args.rank)
 
@@ -712,7 +718,7 @@ def main():
     saver = None
 
     output_dir = None
-    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay)
+    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_run_' + str(args.run_id)
 
     if utils.is_primary(args):
         if args.experiment:
@@ -786,7 +792,7 @@ def main():
                       **optimizer_args,
                     },
               "max_epoch": num_epochs,
-              "run_id": 0
+              "run_id": args.run_id
               }
     
     result = {"config": config,
