@@ -20,9 +20,11 @@ crop_pct: 0.9
 bce_loss: true
 
 # Optimizer
-lr: 0.02
-opt: momo-adam
-weight_decay: 0.005
+lr: 0.001
+opt: adamw
+weight_decay: 0.1
+
+run_id: 2
 
 # Other
 workers: 16
