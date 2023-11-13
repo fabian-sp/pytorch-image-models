@@ -47,7 +47,7 @@ id_df = R.id_df                                     # dataframe with the optimiz
 assert R.raw_df.groupby(['id', 'epoch']).size().min() == 3
 assert R.raw_df.groupby(['id', 'epoch']).size().max() == 3
 
-#%%
+#%% stability
 
 
 FIGSIZE = (4.8,3.2)
@@ -79,7 +79,25 @@ fig, ax =  plot_stability(R,
 if save:
     fig.savefig(f'plots/{exp_id}/stability_lr_val_loss.pdf')
 
-#%%
+#%% training curves
+
+best = base_df[base_df.epoch==base_df.epoch.max()].groupby('name')['val_score'].nlargest(3)
+ixx = base_df.id[best.index.levels[1]]
+df1 = base_df.loc[base_df.id.isin(ixx),:]
+
+fig, ax = R.plot_metric(df=df1, 
+                        s='val_score', 
+                        ylim=(0.15,0.76), 
+                        log_scale=False, 
+                        figsize=(4,3.5), 
+                        legend=False)
+
+fig.subplots_adjust(top=0.975,bottom=0.16,left=0.16,right=0.975)
+
+if save:
+    fig.savefig(f'plots/{exp_id}/all_val_score.pdf')
+
+#%% step sizes
 
 fig, axs = plot_step_sizes(R, method='momo-adam', grid=(2,2), start=None, stop=None, save=False)
 
