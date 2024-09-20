@@ -4,7 +4,7 @@ experiment: vit_tiny_patch16_224
 model: vit_tiny_patch16_224
 data_dir: /tmp/imagenet 
 
-epochs: 200
+epochs: 20
 batch_size: 512
 
 sched: cosine
@@ -24,8 +24,9 @@ lr: 0.001
 opt: adamw
 weight_decay: 0.1
 
-run_id: 2
+run_id: 0
 
 # Other
 workers: 16
 log_wandb: true
+wandb_project_name: timm
