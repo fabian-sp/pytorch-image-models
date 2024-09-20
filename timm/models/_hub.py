@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import os
-import sys
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -22,9 +21,9 @@ try:
 except ImportError:
     _has_safetensors = False
 
-if sys.version_info >= (3, 8):
+try:
     from typing import Literal
-else:
+except ImportError:
     from typing_extensions import Literal
 
 from timm import __version__
@@ -164,11 +163,16 @@ def load_model_config_from_hf(model_id: str):
     if 'label_descriptions' in hf_config:
         pretrained_cfg['label_descriptions'] = hf_config.pop('label_descriptions')
 
+    model_args = hf_config.get('model_args', {})
     model_name = hf_config['architecture']
-    return pretrained_cfg, model_name
+    return pretrained_cfg, model_name, model_args
 
 
-def load_state_dict_from_hf(model_id: str, filename: str = HF_WEIGHTS_NAME):
+def load_state_dict_from_hf(
+        model_id: str,
+        filename: str = HF_WEIGHTS_NAME,
+        weights_only: bool = False,
+):
     assert has_hf_hub(True)
     hf_model_id, hf_revision = hf_split(model_id)
 
@@ -187,25 +191,40 @@ def load_state_dict_from_hf(model_id: str, filename: str = HF_WEIGHTS_NAME):
     # Otherwise, load using pytorch.load
     cached_file = hf_hub_download(hf_model_id, filename=filename, revision=hf_revision)
     _logger.debug(f"[{model_id}] Safe alternative not found for '{filename}'. Loading weights using default pytorch.")
-    return torch.load(cached_file, map_location='cpu')
+    try:
+        state_dict = torch.load(cached_file, map_location='cpu', weights_only=weights_only)
+    except TypeError:
+        state_dict = torch.load(cached_file, map_location='cpu')
+    return state_dict
+
+
+def load_custom_from_hf(model_id: str, filename: str, model: torch.nn.Module):
+    assert has_hf_hub(True)
+    hf_model_id, hf_revision = hf_split(model_id)
+    cached_file = hf_hub_download(hf_model_id, filename=filename, revision=hf_revision)
+    return model.load_pretrained(cached_file)
 
 
 def save_config_for_hf(
         model,
         config_path: str,
-        model_config: Optional[dict] = None
+        model_config: Optional[dict] = None,
+        model_args: Optional[dict] = None
 ):
     model_config = model_config or {}
     hf_config = {}
     pretrained_cfg = filter_pretrained_cfg(model.pretrained_cfg, remove_source=True, remove_null=True)
     # set some values at root config level
     hf_config['architecture'] = pretrained_cfg.pop('architecture')
-    hf_config['num_classes'] = model_config.get('num_classes', model.num_classes)
-    hf_config['num_features'] = model_config.get('num_features', model.num_features)
-    global_pool_type = model_config.get('global_pool', getattr(model, 'global_pool', None))
+    hf_config['num_classes'] = model_config.pop('num_classes', model.num_classes)
+
+    # NOTE these attr saved for informational purposes, do not impact model build
+    hf_config['num_features'] = model_config.pop('num_features', model.num_features)
+    global_pool_type = model_config.pop('global_pool', getattr(model, 'global_pool', None))
     if isinstance(global_pool_type, str) and global_pool_type:
         hf_config['global_pool'] = global_pool_type
 
+    # Save class label info
     if 'labels' in model_config:
         _logger.warning(
             "'labels' as a config field for is deprecated. Please use 'label_names' and 'label_descriptions'."
@@ -225,6 +244,9 @@ def save_config_for_hf(
         # maps label names -> descriptions
         hf_config['label_descriptions'] = label_descriptions
 
+    if model_args:
+        hf_config['model_args'] = model_args
+
     hf_config['pretrained_cfg'] = pretrained_cfg
     hf_config.update(model_config)
 
@@ -236,6 +258,7 @@ def save_for_hf(
         model,
         save_directory: str,
         model_config: Optional[dict] = None,
+        model_args: Optional[dict] = None,
         safe_serialization: Union[bool, Literal["both"]] = False,
 ):
     assert has_hf_hub(True)
@@ -251,11 +274,16 @@ def save_for_hf(
         torch.save(tensors, save_directory / HF_WEIGHTS_NAME)
 
     config_path = save_directory / 'config.json'
-    save_config_for_hf(model, config_path, model_config=model_config)
+    save_config_for_hf(
+        model,
+        config_path,
+        model_config=model_config,
+        model_args=model_args,
+    )
 
 
 def push_to_hf_hub(
-        model,
+        model: torch.nn.Module,
         repo_id: str,
         commit_message: str = 'Add model',
         token: Optional[str] = None,
@@ -264,7 +292,8 @@ def push_to_hf_hub(
         create_pr: bool = False,
         model_config: Optional[dict] = None,
         model_card: Optional[dict] = None,
-        safe_serialization: Union[bool, Literal["both"]] = False,
+        model_args: Optional[dict] = None,
+        safe_serialization: Union[bool, Literal["both"]] = 'both',
 ):
     """
     Arguments:
@@ -291,7 +320,13 @@ def push_to_hf_hub(
     # Dump model and push to Hub
     with TemporaryDirectory() as tmpdir:
         # Save model weights and config.
-        save_for_hf(model, tmpdir, model_config=model_config, safe_serialization=safe_serialization)
+        save_for_hf(
+            model,
+            tmpdir,
+            model_config=model_config,
+            model_args=model_args,
+            safe_serialization=safe_serialization,
+        )
 
         # Add readme if it does not exist
         if not has_readme:

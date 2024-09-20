@@ -16,7 +16,7 @@ from ._pretrained import PretrainedCfg, DefaultCfg
 __all__ = [
     'split_model_name_tag', 'get_arch_name', 'register_model', 'generate_default_cfgs',
     'list_models', 'list_pretrained', 'is_model', 'model_entrypoint', 'list_modules', 'is_model_in_modules',
-    'get_pretrained_cfg_value', 'is_model_pretrained'
+    'get_pretrained_cfg_value', 'is_model_pretrained', 'get_pretrained_cfgs_for_arch'
 ]
 
 _module_to_models: Dict[str, Set[str]] = defaultdict(set)  # dict of sets to check membership of model in module
@@ -86,6 +86,12 @@ def register_model(fn: Callable[..., Any]) -> Callable[..., Any]:
         mod.__all__ = [model_name]  # type: ignore
 
     # add entries to registry dict/sets
+    if model_name in _model_entrypoints:
+        warnings.warn(
+            f'Overwriting {model_name} in registry with {fn.__module__}.{model_name}. This is because the name being '
+            'registered conflicts with an existing name. Please check if this is not expected.',
+            stacklevel=2,
+        )
     _model_entrypoints[model_name] = fn
     _model_to_module[model_name] = module_name
     _module_to_models[module_name].add(model_name)
@@ -178,7 +184,7 @@ def _expand_filter(filter: str):
 
 def list_models(
         filter: Union[str, List[str]] = '',
-        module: str = '',
+        module: Union[str, List[str]] = '',
         pretrained: bool = False,
         exclude_filters: Union[str, List[str]] = '',
         name_matches_cfg: bool = False,
@@ -211,7 +217,16 @@ def list_models(
         # FIXME should this be default behaviour? or default to include_tags=True?
         include_tags = pretrained
 
-    all_models: Set[str] = _module_to_models[module] if module else set(_model_entrypoints.keys())
+    if not module:
+        all_models: Set[str] = set(_model_entrypoints.keys())
+    else:
+        if isinstance(module, str):
+            all_models: Set[str] = _module_to_models[module]
+        else:
+            assert isinstance(module, Sequence)
+            all_models: Set[str] = set()
+            for m in module:
+                all_models.update(_module_to_models[m])
     all_models = all_models - _deprecated_models.keys()  # remove deprecated models from listings
 
     if include_tags:
@@ -326,3 +341,12 @@ def get_pretrained_cfg_value(model_name: str, cfg_key: str) -> Optional[Any]:
     """
     cfg = get_pretrained_cfg(model_name, allow_unregistered=False)
     return getattr(cfg, cfg_key, None)
+
+
+def get_arch_pretrained_cfgs(model_name: str) -> Dict[str, PretrainedCfg]:
+    """ Get all pretrained cfgs for a given architecture.
+    """
+    arch_name, _ = split_model_name_tag(model_name)
+    model_names = _model_with_tags[arch_name]
+    cfgs = {m: _model_pretrained_cfgs[m] for m in model_names}
+    return cfgs
