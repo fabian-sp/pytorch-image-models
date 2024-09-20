@@ -747,6 +747,12 @@ def main():
         worker_seeding=args.worker_seeding,
     )
 
+    try:
+        if utils.is_primary(args):
+            print("Transforms train \n", dataset_train.transform)
+    except:
+        pass
+
     loader_eval = None
     if args.val_split:
         eval_workers = args.workers
@@ -768,6 +774,12 @@ def main():
             device=device,
             use_prefetcher=args.prefetcher,
         )
+
+        try:
+            if utils.is_primary(args):
+                print("Transforms val \n", dataset_eval.transform)
+        except:
+            pass
 
     if utils.is_primary(args):
         print(f"Length of train loader: {len(loader_train)}")
@@ -802,6 +814,9 @@ def main():
         train_loss_fn = nn.CrossEntropyLoss()
     train_loss_fn = train_loss_fn.to(device=device)
     validate_loss_fn = nn.CrossEntropyLoss().to(device=device)
+
+    if utils.is_primary(args):
+        print("Train loss function: ", train_loss_fn)
 
     # setup checkpoint saver and eval metric tracking
     eval_metric = args.eval_metric if loader_eval is not None else 'loss'
@@ -842,7 +857,7 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
-            wandb.init(project=args.wandb_project_name, config=args, name=args.experiment+'_'+opt_run_name)
+            wandb.init(project=args.wandb_project_name, config=args, name=args.model+'/'+opt_run_name)
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "

@@ -93,7 +93,7 @@ def init_distributed_device(args):
     args.rank = result['global_rank']
     args.local_rank = result['local_rank']
     args.distributed = result['distributed']
-    print("Is distributed?", args.distributed)
+    # print("Is distributed?", args.distributed)
     device = torch.device(args.device)
     return device
 

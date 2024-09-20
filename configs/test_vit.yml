@@ -1,0 +1,29 @@
+---
+
+experiment: test_vit
+model: vit_tiny_patch16_224
+data_dir: /tmp/imagenet 
+
+epochs: 20
+batch_size: 512
+
+sched: cosine
+warmup_epochs: 5
+
+# Data and Model
+hflip: 0.5
+aa: rand-m6-mstd0.5
+mixup: 0.1
+cutmix: 1.0
+crop_pct: 0.9
+
+# Optimizer
+lr: 0.001
+opt: adamw
+weight_decay: 0.1
+run_id: 0
+
+# Other
+workers: 16
+log_wandb: true
+wandb_project_name: timm
