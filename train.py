@@ -707,6 +707,11 @@ def main():
     train_interpolation = args.train_interpolation
     if args.no_aug or not train_interpolation:
         train_interpolation = data_config['interpolation']
+    
+    if utils.is_primary(args):
+        print(f"Length of dataset_train (before loader): {len(dataset_train)}")
+        print(f"Length of dataset_val (before loader): {len(dataset_eval)}")
+
     loader_train = create_loader(
         dataset_train,
         input_size=data_config['input_size'],
@@ -763,6 +768,11 @@ def main():
             device=device,
             use_prefetcher=args.prefetcher,
         )
+
+    if utils.is_primary(args):
+        print(f"Length of train loader: {len(loader_train)}")
+        print(f"Length of val loader: {len(loader_eval)}")
+
 
     # setup loss function
     if args.jsd_loss:
@@ -828,7 +838,7 @@ def main():
         with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
             f.write(args_text)
 
-    print("Output directory: ", output_dir)
+    print(f"Output directory on device {device}: ", output_dir)
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
