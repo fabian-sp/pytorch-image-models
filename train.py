@@ -729,6 +729,7 @@ def main():
                 safe_model_name(args.model),
                 str(data_config['input_size'][-1])
             ])
+
         output_dir = utils.get_outdir(args.output if args.output else './output/train', exp_name, opt_run_name)
         decreasing = True if eval_metric == 'loss' else False
         saver = utils.CheckpointSaver(
@@ -800,7 +801,6 @@ def main():
               "history": list()
               }
     
-    
     try:
         for epoch in range(start_epoch, num_epochs):
             if hasattr(dataset_train, 'set_epoch'):
@@ -829,15 +829,6 @@ def main():
                     _logger.info("Distributing BatchNorm running means and vars")
                 utils.distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
 
-
-            # train_metrics = validate(
-            #     model,
-            #     loader_train,
-            #     train_loss_fn,
-            #     args,
-            #     amp_autocast=amp_autocast,
-            # )
-
             eval_metrics = validate(
                 model,
                 loader_eval,
@@ -863,6 +854,7 @@ def main():
             ###################################
             ## Store output in step-back format
             ## Only store for first worker (where output dir is not None)
+                
             if output_dir is not None:
                 json_output_dir = os.path.join('output', 'json', exp_name)
                 if not os.path.exists(json_output_dir):
