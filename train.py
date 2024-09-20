@@ -939,6 +939,7 @@ def main():
             else:
                 eval_metrics = None
 
+            # store step-back result (output_dir is not None only one primary process)
             if output_dir is not None:
                 json_output_dir = os.path.join('output', 'json', exp_name)
                 if not os.path.exists(json_output_dir):
@@ -980,21 +981,12 @@ def main():
                 # step LR for next epoch
                 lr_scheduler.step(epoch + 1, latest_metric)
 
-            # results.append({
-            #     'epoch': epoch,
-            #     'train': train_metrics,
-            #     'validation': eval_metrics,
-            # })
-
     except KeyboardInterrupt:
         pass
 
-    # results = {'all': results}
     if best_metric is not None:
-        # results['best'] = results['all'][best_epoch - start_epoch]
         _logger.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
-    # print(f'--result\n{json.dumps(results, indent=4)}')
-
+    
 
 def train_one_epoch(
         epoch,
@@ -1084,7 +1076,7 @@ def train_one_epoch(
                         )
                     # closure = lambda: _loss
                     
-                    if args.opt == 'momo-adam':
+                    if args.opt in ['momo', 'momo-adam']:
                         optimizer.step(loss=_loss)
                     else:
                         optimizer.step()

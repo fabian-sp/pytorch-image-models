@@ -1,6 +1,6 @@
 ---
 
-experiment: vit_tiny_patch16_224
+experiment: test
 model: vit_tiny_patch16_224
 data_dir: /tmp/imagenet 
 
