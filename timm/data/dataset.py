@@ -71,7 +71,7 @@ class ImageDataset(data.Dataset):
         elif self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target
+        return img, target, index
 
     def __len__(self):
         return len(self.reader)

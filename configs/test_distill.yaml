@@ -1,0 +1,31 @@
+---
+
+experiment: distill
+model: resnet50
+data_dir: /tmp/imagenet 
+
+epochs: 20
+batch_size: 256
+
+sched: cosine
+warmup_epochs: 5
+
+# smoothing zero to
+smoothing: 0
+
+# Data and Model
+hflip: 0.5
+vflip: 0.0
+crop_pct: 1.0
+
+# Optimizer
+lr: 0.1
+opt: sgd
+momentum: 0.9
+weight_decay: 0.0001
+run_id: 0
+
+# Other
+workers: 16
+log_wandb: true
+wandb_project_name: iam-distill

@@ -71,6 +71,8 @@ except ImportError as e:
 
 has_compile = hasattr(torch, 'compile')
 
+# for model distillation
+from teacher import compute_teacher_output
 
 _logger = logging.getLogger('train')
 
@@ -454,8 +456,6 @@ def main():
 
     # if run_id == 0, then default seed is 42
     args.seed += args.run_id
-    print(f"Seed {args.seed}.")
-
     utils.random_seed(args.seed, args.rank)
 
     if args.fuser:
@@ -647,6 +647,7 @@ def main():
     else:
         input_img_mode = args.input_img_mode
 
+    # we added a wrapper to the dataset (IndexedDataset), to also return the batch indices at each iteration
     dataset_train = create_dataset(
         args.dataset,
         root=args.data_dir,
@@ -712,6 +713,9 @@ def main():
         print(f"Length of dataset_train (before loader): {len(dataset_train)}")
         print(f"Length of dataset_val (before loader): {len(dataset_eval)}")
 
+
+    # Seed before creation of DataLoader
+    utils.random_seed(args.seed, args.rank)
     loader_train = create_loader(
         dataset_train,
         input_size=data_config['input_size'],
@@ -787,6 +791,7 @@ def main():
 
 
     # setup loss function
+    # FS: we need a second loss_fn, with reduction=none. Create this only in case of (LabelSmoothing)CrossEntropy for now.
     if args.jsd_loss:
         assert num_aug_splits > 1  # JSD only valid with aug splits set
         train_loss_fn = JsdCrossEntropy(num_splits=num_aug_splits, smoothing=args.smoothing)
@@ -810,13 +815,25 @@ def main():
             )
         else:
             train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+            #precompute_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing, reduction='none')
     else:
         train_loss_fn = nn.CrossEntropyLoss()
+        #precompute_loss_fn = nn.CrossEntropyLoss(reduction='none')
+
     train_loss_fn = train_loss_fn.to(device=device)
     validate_loss_fn = nn.CrossEntropyLoss().to(device=device)
 
     if utils.is_primary(args):
         print("Train loss function: ", train_loss_fn)
+
+    # FS: now that we have data, and loss_fn we can precompute losses of teacher model
+    # teacher_losses = compute_teacher_output(model_name="vit_b_16",
+    #                                         loader=loader_train,
+    #                                         loss_fn=precompute_loss_fn,
+    #                                         device=device,
+    #                                         train_aug_seed=args.seed,
+    #                                         train_set_size=1281167
+    # )
 
     # setup checkpoint saver and eval metric tracking
     eval_metric = args.eval_metric if loader_eval is not None else 'loss'
@@ -1054,7 +1071,7 @@ def train_one_epoch(
     data_start_time = update_start_time = time.time()
     optimizer.zero_grad()
     update_sample_count = 0
-    for batch_idx, (input, target) in enumerate(loader):
+    for batch_idx, (input, target, idxs) in enumerate(loader):
         last_batch = batch_idx == last_batch_idx
         need_update = last_batch or (batch_idx + 1) % accum_steps == 0
         update_idx = batch_idx // accum_steps
@@ -1062,7 +1079,7 @@ def train_one_epoch(
             accum_steps = last_accum_steps
 
         if not args.prefetcher:
-            input, target = input.to(device), target.to(device)
+            input, target, idxs = input.to(device), target.to(device), idxs.to(device)
             if mixup_fn is not None:
                 input, target = mixup_fn(input, target)
         if args.channels_last:
@@ -1197,11 +1214,12 @@ def validate(
     end = time.time()
     last_idx = len(loader) - 1
     with torch.no_grad():
-        for batch_idx, (input, target) in enumerate(loader):
+        for batch_idx, (input, target, idxs) in enumerate(loader):
             last_batch = batch_idx == last_idx
             if not args.prefetcher:
                 input = input.to(device)
                 target = target.to(device)
+                idxs = idxs.to(device)
             if args.channels_last:
                 input = input.contiguous(memory_format=torch.channels_last)
 

@@ -27,6 +27,8 @@ from timm.layers import apply_test_time_pool, set_fast_norm
 from timm.models import create_model, load_checkpoint, is_model, list_models
 from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging, set_jit_fuser, \
     decay_batch_step, check_batch_size_retry, ParseKwargs, reparameterize_model
+from timm import utils
+from timm.loss import LabelSmoothingCrossEntropy
 
 try:
     from apex import amp
@@ -159,9 +161,27 @@ parser.add_argument('--valid-labels', default='', type=str, metavar='FILENAME',
                     help='Valid label indices txt file for validation of partial label space')
 parser.add_argument('--retry', default=False, action='store_true',
                     help='Enable batch size decay & retry for single model validation')
-
+parser.add_argument('--seed', type=int, default=42, metavar='S',
+                   help='random seed (default: 42)')
+parser.add_argument('--smoothing', type=float, default=0,
+                   help='Label smoothing (default: 0)')
 
 def validate(args):
+    #===================================================
+    #### Added by FS
+    #=================
+    save_dir = f"output/teacher/"
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+
+    if args.smoothing:
+        loss_name =f"SmoothingCE_{args.smoothing}"
+    else:
+        loss_name = "CE"
+    
+    fname = os.path.join(save_dir, f"losses_{args.model}_{loss_name}_seed_{args.seed}.pkl")
+    #===================================================
+
     # might as well try to validate something
     args.pretrained = args.pretrained or not args.checkpoint
     args.prefetcher = not args.no_prefetcher
@@ -257,7 +277,10 @@ def validate(args):
     if args.num_gpu > 1:
         model = torch.nn.DataParallel(model, device_ids=list(range(args.num_gpu)))
 
-    criterion = nn.CrossEntropyLoss().to(device)
+    if args.smoothing:
+        criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing, reduction="none")
+    else:
+        criterion = nn.CrossEntropyLoss(reduction="none").to(device)
 
     root_dir = args.data or args.data_dir
     if args.input_img_mode is None:
@@ -277,6 +300,8 @@ def validate(args):
         target_key=args.target_key,
     )
 
+    num_dataset_samples = len(dataset)
+
     if args.valid_labels:
         with open(args.valid_labels, 'r') as f:
             valid_labels = [int(line.rstrip()) for line in f]
@@ -287,6 +312,9 @@ def validate(args):
         real_labels = RealLabelsImagenet(dataset.filenames(basename=True), real_json=args.real_labels)
     else:
         real_labels = None
+
+    # Seed before creation of DataLoader
+    utils.random_seed(args.seed, 0)
 
     crop_pct = 1.0 if test_time_pool else data_config['crop_pct']
     loader = create_loader(
@@ -307,9 +335,10 @@ def validate(args):
     )
 
     batch_time = AverageMeter()
-    losses = AverageMeter()
+    loss_meter = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    losses = torch.zeros(num_dataset_samples, requires_grad=False).to(device)
 
     model.eval()
     with torch.no_grad():
@@ -321,13 +350,18 @@ def validate(args):
             model(input)
 
         end = time.time()
-        for batch_idx, (input, target) in enumerate(loader):
+        for batch_idx, (input, target, idxs) in enumerate(loader):
+
             if args.no_prefetcher:
                 target = target.to(device)
                 input = input.to(device)
+                idxs = idxs.to(device)
             if args.channels_last:
                 input = input.contiguous(memory_format=torch.channels_last)
 
+            if len(input) != args.batch_size:
+                print(f"Batch of size {len(input)} detected.")
+            
             # compute output
             with amp_autocast():
                 output = model(input)
@@ -335,13 +369,15 @@ def validate(args):
                 if valid_labels is not None:
                     output = output[:, valid_labels]
                 loss = criterion(output, target)
-
+                losses[idxs] = loss                   # here we store loss value
+                print("Loss values to fill:", len(losses[losses==0.0]))
+                
             if real_labels is not None:
                 real_labels.add_result(output)
 
             # measure accuracy and record loss
             acc1, acc5 = accuracy(output.detach(), target, topk=(1, 5))
-            losses.update(loss.item(), input.size(0))
+            loss_meter.update(loss.mean().item(), input.size(0))
             top1.update(acc1.item(), input.size(0))
             top5.update(acc5.item(), input.size(0))
 
@@ -360,11 +396,14 @@ def validate(args):
                         len(loader),
                         batch_time=batch_time,
                         rate_avg=input.size(0) / batch_time.avg,
-                        loss=losses,
+                        loss=loss_meter,
                         top1=top1,
                         top5=top5
                     )
                 )
+
+    # Store loss tensor
+    torch.save(losses, f=fname)
 
     if real_labels is not None:
         # real labels mode replaces topk values at the end

@@ -23,14 +23,16 @@ from .random_erasing import RandomErasing
 from .mixup import FastCollateMixup
 from .transforms_factory import create_transform
 
+
 _logger = logging.getLogger(__name__)
 
 
 def fast_collate(batch):
-    """ A fast collation function optimized for uint8 images (np array or torch) and int64 targets (labels)"""
+    """ A fast collation function optimized for uint8 images (np array or torch) and int64 targets (labels) and int64 indices"""
     assert isinstance(batch[0], tuple)
     batch_size = len(batch)
     if isinstance(batch[0][0], tuple):
+        # FIXME: if we want indices, implement here
         # This branch 'deinterleaves' and flattens tuples of input tensors into one tensor ordered by position
         # such that all tuple of position n will end up in a torch.split(tensor, batch_size) in nth position
         inner_tuple_size = len(batch[0][0])
@@ -46,17 +48,19 @@ def fast_collate(batch):
     elif isinstance(batch[0][0], np.ndarray):
         targets = torch.tensor([b[1] for b in batch], dtype=torch.int64)
         assert len(targets) == batch_size
+        idxs = torch.tensor([b[2] for b in batch], dtype=torch.int64)
         tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
         for i in range(batch_size):
             tensor[i] += torch.from_numpy(batch[i][0])
-        return tensor, targets
+        return tensor, targets, idxs
     elif isinstance(batch[0][0], torch.Tensor):
         targets = torch.tensor([b[1] for b in batch], dtype=torch.int64)
         assert len(targets) == batch_size
+        idxs = torch.tensor([b[2] for b in batch], dtype=torch.int64)
         tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
         for i in range(batch_size):
             tensor[i].copy_(batch[i][0])
-        return tensor, targets
+        return tensor, targets, idxs
     else:
         assert False
 
@@ -124,17 +128,18 @@ class PrefetchLoader:
             stream = None
             stream_context = suppress
 
-        for next_input, next_target in self.loader:
+        for next_input, next_target, next_idxs in self.loader:
 
             with stream_context():
                 next_input = next_input.to(device=self.device, non_blocking=True)
                 next_target = next_target.to(device=self.device, non_blocking=True)
+                next_idxs = next_idxs.to(device=self.device, non_blocking=True)
                 next_input = next_input.to(self.img_dtype).sub_(self.mean).div_(self.std)
                 if self.random_erasing is not None:
                     next_input = self.random_erasing(next_input)
 
             if not first:
-                yield input, target
+                yield input, target, idxs
             else:
                 first = False
 
@@ -143,8 +148,9 @@ class PrefetchLoader:
 
             input = next_input
             target = next_target
+            idxs = next_idxs
 
-        yield input, target
+        yield input, target, idxs
 
     def __len__(self):
         return len(self.loader)
@@ -310,7 +316,7 @@ def create_loader(
         # give Iterable datasets early knowledge of num_workers so that sample estimates
         # are correct before worker processes are launched
         dataset.set_loader_cfg(num_workers=num_workers)
-
+ 
     sampler = None
     if distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:

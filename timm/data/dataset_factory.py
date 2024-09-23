@@ -108,6 +108,7 @@ def create_dataset(
     """
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
     name = name.lower()
+    
     if name.startswith('torch/'):
         name = name.split('/', 2)[-1]
         torch_kwargs = dict(root=root, download=download, **kwargs)
@@ -210,9 +211,11 @@ def create_dataset(
         )
     else:
         # FIXME support more advance split cfg for ImageFolder/Tar datasets in the future
+        # FS: we will land here.
         if search_split and os.path.isdir(root):
             # look for split specific sub-folder in root
             root = _search_split(root, split)
+
         ds = ImageDataset(
             root,
             reader=name,
@@ -221,4 +224,5 @@ def create_dataset(
             input_img_mode=input_img_mode,
             **kwargs,
         )
+
     return ds
