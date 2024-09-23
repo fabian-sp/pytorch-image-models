@@ -72,7 +72,7 @@ except ImportError as e:
 has_compile = hasattr(torch, 'compile')
 
 # for model distillation
-from teacher import compute_teacher_output
+from teacher import get_teacher_output
 
 _logger = logging.getLogger('train')
 
@@ -569,6 +569,7 @@ def main():
         **optimizer_kwargs(cfg=args),
         **args.opt_kwargs,
     )
+    print(optimizer)
 
     # setup automatic mixed-precision (AMP) loss scaling and op casting
     amp_autocast = suppress  # do nothing
@@ -815,11 +816,10 @@ def main():
             )
         else:
             train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
-            #precompute_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing, reduction='none')
+            
     else:
         train_loss_fn = nn.CrossEntropyLoss()
-        #precompute_loss_fn = nn.CrossEntropyLoss(reduction='none')
-
+        
     train_loss_fn = train_loss_fn.to(device=device)
     validate_loss_fn = nn.CrossEntropyLoss().to(device=device)
 
@@ -827,13 +827,11 @@ def main():
         print("Train loss function: ", train_loss_fn)
 
     # FS: now that we have data, and loss_fn we can precompute losses of teacher model
-    # teacher_losses = compute_teacher_output(model_name="vit_b_16",
-    #                                         loader=loader_train,
-    #                                         loss_fn=precompute_loss_fn,
-    #                                         device=device,
-    #                                         train_aug_seed=args.seed,
-    #                                         train_set_size=1281167
-    # )
+    teacher_losses = get_teacher_output(model_name="vit_base_patch8_224.augreg2_in21k_ft_in1k",
+                                        loss_fn=train_loss_fn,
+                                        device=device,
+                                        seed=args.seed
+    )
 
     # setup checkpoint saver and eval metric tracking
     eval_metric = args.eval_metric if loader_eval is not None else 'loss'
@@ -947,6 +945,7 @@ def main():
                 model_ema=model_ema,
                 mixup_fn=mixup_fn,
                 num_updates_total=num_epochs * updates_per_epoch,
+                teacher_losses=teacher_losses
             )
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
@@ -1046,6 +1045,7 @@ def train_one_epoch(
         model_ema=None,
         mixup_fn=None,
         num_updates_total=None,
+        teacher_losses=None
 ):
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
@@ -1118,8 +1118,9 @@ def train_one_epoch(
                         )
                     # closure = lambda: _loss
                     
-                    if args.opt in ['momo', 'momo-adam']:
-                        optimizer.step(loss=_loss)
+                    if args.opt in ['iam', 'momo']:
+                        this_lb = teacher_losses[idxs].mean().item()
+                        optimizer.step(loss=_loss, lb=this_lb)
                     else:
                         optimizer.step()
 

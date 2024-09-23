@@ -29,6 +29,8 @@ from .rmsprop_tf import RMSpropTF
 from .sgdp import SGDP
 from .sgdw import SGDW
 
+from .momo import Momo
+from .iam import IAM
 from momo import MomoAdam
 
 
@@ -300,8 +302,14 @@ def create_optimizer_v2(
         optimizer = SGDW(parameters, momentum=momentum, nesterov=False, **opt_args)
 
     # MoMo
+    elif opt_lower == 'momo':
+        optimizer = Momo(parameters, **opt_args)
     elif opt_lower == 'momo-adam':
         optimizer = MomoAdam(parameters, **opt_args)
+
+    # IAM
+    elif opt_lower == 'iam':
+        optimizer = IAM(parameters, **opt_args)    
 
     # adaptive
     elif opt_lower == 'adam':
