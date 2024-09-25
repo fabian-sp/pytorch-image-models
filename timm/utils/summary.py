@@ -2,6 +2,7 @@
 
 Hacked together by / Copyright 2020 Ross Wightman
 """
+import torch
 import csv
 import os
 from collections import OrderedDict
@@ -53,15 +54,23 @@ def update_summary(
 def update_history(epoch,
         train_metrics,
         eval_metrics,
-        lr,
-        log_wandb=False):
+        lr
+    ):
     
     rowd = OrderedDict(epoch=epoch)
     rowd.update([('train_' + k, v) for k, v in train_metrics.items()])
     rowd.update([('val_' + k, v) for k, v in eval_metrics.items()])
     rowd['learning_rate'] = lr
-
-    if log_wandb:
-        wandb.log(rowd)
     
     return rowd
+
+
+@torch.no_grad()
+def l2_norm(model: torch.nn.Module):
+    """
+    compute l2 norm of a Pytorch model.
+    """
+    w = 0.
+    for p in model.parameters():
+        w += (p**2).sum()
+    return torch.sqrt(w).item()

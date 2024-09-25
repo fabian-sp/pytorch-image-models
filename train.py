@@ -25,6 +25,7 @@ from contextlib import suppress
 from datetime import datetime
 from functools import partial
 import json
+import copy
 
 import torch
 import torch.nn as nn
@@ -41,6 +42,7 @@ from timm.models import create_model, safe_model_name, resume_checkpoint, load_c
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.utils import ApexScaler, NativeScaler
+from timm.utils.summary import l2_norm
 
 try:
     from apex import amp
@@ -569,7 +571,8 @@ def main():
         **optimizer_kwargs(cfg=args),
         **args.opt_kwargs,
     )
-    print(optimizer)
+    if utils.is_primary(args):
+        print(optimizer)
 
     # setup automatic mixed-precision (AMP) loss scaling and op casting
     amp_autocast = suppress  # do nothing
@@ -792,7 +795,6 @@ def main():
 
 
     # setup loss function
-    # FS: we need a second loss_fn, with reduction=none. Create this only in case of (LabelSmoothing)CrossEntropy for now.
     if args.jsd_loss:
         assert num_aug_splits > 1  # JSD only valid with aug splits set
         train_loss_fn = JsdCrossEntropy(num_splits=num_aug_splits, smoothing=args.smoothing)
@@ -918,6 +920,9 @@ def main():
               "run_id": args.run_id
               }
     
+    # delete some stuff from config
+    config["opt"].pop("opt", None)
+
     result = {"config": config,
               "summary": dict(),
               "history": list()
@@ -987,25 +992,39 @@ def main():
                     os.mkdir(json_output_dir)
 
                 lrs = [param_group['lr'] for param_group in optimizer.param_groups]
+                
                 this_history = utils.update_history(
                     epoch,
                     train_metrics,
                     eval_metrics,
-                    lr=sum(lrs) / len(lrs),
-                    log_wandb=args.log_wandb and has_wandb,
+                    lr=sum(lrs) / len(lrs)
                 )
-                
+
+                try:
+                    this_history["model_norm"] = l2_norm(model)
+                except:
+                    this_history["model_norm"] = None
+                    
                 # Store step size list
+                mean_step_size = 0
                 if optimizer.state.get('step_size_list'):
                     this_history['step_size_list'] = [float(np.format_float_scientific(t,4)) for t in optimizer.state['step_size_list']]
-                    optimizer.state['step_size_list'] = list()
-
+                    optimizer.state['step_size_list'] = list()                
+                    mean_step_size = np.mean(this_history['step_size_list'])
+                
                 # Update history
                 result["history"].append(this_history)
 
-                # Store
+                # Log WandB
+                wandb_history = copy.deepcopy(this_history)
+                wandb_history.pop('step_size_list', None)
+                wandb_history["mean_step_size"] = mean_step_size  
+                if args.log_wandb and has_wandb:
+                    wandb.log(wandb_history)
+    
+                # Store. Make list to align better with step-back format
                 with open(os.path.join(json_output_dir, opt_run_name) + '.json', "w") as f:
-                    json.dump(result, f, indent=4, sort_keys=True)
+                    json.dump([result], f, indent=4, sort_keys=True)
 
             ##################################
 
@@ -1116,7 +1135,6 @@ def train_one_epoch(
                             value=args.clip_grad,
                             mode=args.clip_mode,
                         )
-                    # closure = lambda: _loss
                     
                     if args.opt in ['iam', 'momo']:
                         this_lb = teacher_losses[idxs].mean().item()
