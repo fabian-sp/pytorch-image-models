@@ -281,7 +281,8 @@ def validate(args):
         criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing, reduction="none")
     else:
         criterion = nn.CrossEntropyLoss(reduction="none").to(device)
-
+    print(criterion)
+    
     root_dir = args.data or args.data_dir
     if args.input_img_mode is None:
         input_img_mode = 'RGB' if data_config['input_size'][0] == 3 else 'L'

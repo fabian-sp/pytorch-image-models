@@ -843,7 +843,7 @@ def main():
     saver = None
 
     output_dir = None
-    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_run_' + str(args.run_id)
+    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_run_' + str(args.run_id)
 
     if utils.is_primary(args):
         if args.experiment:

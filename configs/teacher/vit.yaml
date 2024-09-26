@@ -1,2 +1,2 @@
----
 python validate.py --split "train" --data-dir "/tmp/imagenet" --model vit_base_patch8_224.augreg2_in21k_ft_in1k --pretrained --crop-pct 0.9 --batch-size 256
+python validate.py --split "train" --data-dir "/tmp/imagenet" --model vit_base_patch8_224.augreg2_in21k_ft_in1k --pretrained --crop-pct 0.9 --batch-size 256 --smoothing 0.1

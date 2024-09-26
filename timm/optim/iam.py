@@ -130,10 +130,11 @@ class IAM(torch.optim.Optimizer):
 
                 z = state['z']
                 if weight_decay > 0.0:
-                    z.add_(grad+(weight_decay*p.data), alpha=-tau)
-                else:
-                    z.add_(grad, alpha=-tau)  
+                    z.add_(p.data, alpha= (-lr*weight_decay))  # z = z - lr*wd*x
                 
+                # z Update
+                z.add_(grad, alpha=-tau)
+                # x Update  
                 p.data.mul_(lmbda/(1+lmbda)).add_(other=z, alpha=1/(1+lmbda))
                             
         ############################################################
