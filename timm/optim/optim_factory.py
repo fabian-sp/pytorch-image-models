@@ -309,6 +309,8 @@ def create_optimizer_v2(
 
     # IAM
     elif opt_lower == 'iam':
+        if opt_args.get('lmbda') == 'None':
+            opt_args['lmbda'] = None
         optimizer = IAM(parameters, **opt_args)    
 
     # adaptive

@@ -5,10 +5,10 @@ model: resnet50
 data_dir: /tmp/imagenet 
 
 epochs: 100
-batch_size: 256
+batch_size: 64
 
 sched: step
-decay_epochs: 210 
+decay_epochs: 300
 warmup_epochs: 5
 
 # smoothing to zero
@@ -22,10 +22,8 @@ crop_pct: 1.0
 # Optimizer
 lr: 1.0
 opt: iam
-opt_kwargs: {'lmbda': 0.0}
-#opt_kwargs: {'dampening': 0.9}
-#momentum: 0.9
-weight_decay: 0.0
+opt_kwargs: {'lmbda': 9.0}
+weight_decay: 0.000005
 run_id: 0
 
 # Other
