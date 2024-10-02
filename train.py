@@ -1207,6 +1207,11 @@ def train_one_epoch(
         update_sample_count = 0
         data_start_time = time.time()
         # end for
+    
+    # for ScheduleFree
+    # with torch.no_grad():
+    #     for input, target, idxs in itertools.islice(loader, 50):
+    #         model(input)
 
     if hasattr(optimizer, 'sync_lookahead'):
         optimizer.sync_lookahead()

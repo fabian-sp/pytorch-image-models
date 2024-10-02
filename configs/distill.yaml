@@ -1,7 +1,7 @@
 ---
 
 experiment: distill
-model: resnet50
+model: resnet18
 data_dir: /tmp/imagenet 
 
 epochs: 100
@@ -12,7 +12,7 @@ decay_epochs: 300
 warmup_epochs: 5
 
 # smoothing to zero
-smoothing: 0
+smoothing: 0.1
 
 # Data and Model
 hflip: 0.5
@@ -23,7 +23,7 @@ crop_pct: 1.0
 lr: 1.0
 opt: iam
 opt_kwargs: {'lmbda': 9.0}
-weight_decay: 0.000005
+weight_decay: 0.00001
 run_id: 0
 
 # Other

@@ -52,7 +52,8 @@ class IAM(torch.optim.Optimizer):
         defaults = dict(lr=lr, 
                         lmbda=lmbda, 
                         weight_decay=weight_decay,
-                        weight_sum=0.0
+                        weight_sum=0.0,
+                        lr_max=-1.0
         )
         
         super(IAM, self).__init__(params, defaults)
@@ -97,7 +98,8 @@ class IAM(torch.optim.Optimizer):
             warnings.warn("More than one param group. This might cause issues for the step method.")
 
         _norm = 0.
-        _dot = 0.
+        _dot1 = 0.
+        _dot2 = 0.
     
         ############################################################
         for group in self.param_groups:
@@ -113,7 +115,8 @@ class IAM(torch.optim.Optimizer):
                         
                 z = state['z']
 
-                _dot += torch.sum(torch.mul(grad, z-p.data))
+                _dot1 += torch.sum(torch.mul(grad, z))
+                _dot2 += torch.sum(torch.mul(grad, p.data))
                 _norm += torch.sum(torch.mul(grad, grad))
 
         #################   
@@ -129,11 +132,21 @@ class IAM(torch.optim.Optimizer):
                 
             ### Compute adaptive step size
             this_lb = self.lb if not lb else lb
-            t1 = loss.item() - this_lb + _dot
+            t1 = loss.item() - this_lb + _dot1 - _dot2
             eta = max(t1, 0) / _norm
             eta = eta.item() # make scalar
             tau = min(lr, eta)
-                 
+            
+            ### Weighted avergae for momentum (adapted from ScheduleFree)
+            # lr_max = group['lr_max'] = max(tau, group['lr_max'])
+            # weight = tau #lr_max**2
+            # weight_sum = group['weight_sum'] = group['weight_sum'] + weight
+            
+            # try:
+            #     ctp1 = weight/weight_sum
+            # except ZeroDivisionError:
+            #     ctp1 = 0
+
             ### Update params
             for p in group['params']:   
                 grad = p.grad.data.detach()
@@ -145,7 +158,8 @@ class IAM(torch.optim.Optimizer):
                 
                 # z Update
                 z.add_(grad, alpha=-tau)
-                # x Update  
+                # x Update 
+                # p.data.mul_(1-ctp1).add_(other=z, alpha=ctp1) 
                 p.data.mul_(lmbda/(1+lmbda)).add_(other=z, alpha=1/(1+lmbda))
 
         self._number_steps += 1
