@@ -3,7 +3,7 @@ from stepback.utils import merge_subfolder
 import os
 import json
 #%% Step 1: merge single files into one 
-merge_subfolder(folder_name='../json/vit_tiny_patch16_224', fname='vit_tiny_patch16_224', output_dir='output/clean/')
+merge_subfolder(folder_name='../json/momo_exp', fname='vit_tiny_patch16_224', output_dir='output/clean/')
 
 #%% Step 2: remove unnecessary config keys
 
