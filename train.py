@@ -26,6 +26,7 @@ from datetime import datetime
 from functools import partial
 import json
 import copy
+import datetime
 
 import torch
 import torch.nn as nn
@@ -829,7 +830,7 @@ def main():
     saver = None
 
     output_dir = None
-    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_run_' + str(args.run_id)
+    opt_run_name = args.model + '_' + args.opt + '_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_run_' + str(args.run_id)
 
     if utils.is_primary(args):
         if args.experiment:
@@ -860,7 +861,7 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
-            wandb.init(project=args.wandb_project_name, config=args, name=args.model+'/'+opt_run_name)
+            wandb.init(project=args.wandb_project_name, config=args, name=opt_run_name)
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "
@@ -913,6 +914,10 @@ def main():
               "summary": dict(),
               "history": list()
               }
+    
+    # Log some useful stuff
+    result["summary"]["start_time"] = str(datetime.datetime.now())
+    result["summary"]["len_train_loader"] = len(loader_train)
     
     try:
         for epoch in range(start_epoch, num_epochs):
@@ -1025,7 +1030,7 @@ def main():
             if lr_scheduler is not None:
                 # step LR for next epoch
                 lr_scheduler.step(epoch + 1, latest_metric)
-
+            
     except KeyboardInterrupt:
         pass
 
@@ -1119,13 +1124,19 @@ def train_one_epoch(
                             value=args.clip_grad,
                             mode=args.clip_mode,
                         )
-                    # closure = lambda: _loss
                     
+                    # ==== Optimizer Step ====
                     if args.opt in ['momo', 'momo-adam']:
-                        optimizer.step(loss=_loss)
+                        # reduce loss and lb if we have distributed setup
+                        if args.distributed:
+                            _reduced_loss = utils.reduce_tensor(loss.data, args.world_size)
+                            optimizer.step(loss=_reduced_loss)
+                        else:
+                            optimizer.step(loss=_loss)
                     else:
                         optimizer.step()
-
+                    # ====
+                        
         if has_no_sync and not need_update:
             with model.no_sync():
                 loss = _forward()
