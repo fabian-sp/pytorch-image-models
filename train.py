@@ -843,7 +843,7 @@ def main():
     saver = None
 
     output_dir = None
-    opt_run_name = args.opt +'_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_run_' + str(args.run_id)
+    opt_run_name = args.model + '_' + args.opt + '_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_run_' + str(args.run_id)
 
     if utils.is_primary(args):
         if args.experiment:
@@ -874,7 +874,7 @@ def main():
 
     if utils.is_primary(args) and args.log_wandb:
         if has_wandb:
-            wandb.init(project=args.wandb_project_name, config=args, name=args.model+'/'+opt_run_name)
+            wandb.init(project=args.wandb_project_name, config=args, name=opt_run_name)
         else:
             _logger.warning(
                 "You've requested to log metrics to wandb but package not found. "
@@ -1137,8 +1137,15 @@ def train_one_epoch(
                         )
                     
                     if args.opt in ['iam', 'momo']:
-                        this_lb = teacher_losses[idxs].mean().item()
-                        optimizer.step(loss=_loss, lb=this_lb)
+                        this_lb = teacher_losses[idxs].mean()
+
+                        # reduce loss and lb if we have distributed setup
+                        if args.distributed:
+                            _reduced_loss = utils.reduce_tensor(loss.data, args.world_size)
+                            _reduced_lb = utils.reduce_tensor(this_lb.data, args.world_size)
+                            optimizer.step(loss=_reduced_loss, lb=_reduced_lb)
+                        else:
+                            optimizer.step(loss=_loss, lb=this_lb)
                     else:
                         optimizer.step()
 

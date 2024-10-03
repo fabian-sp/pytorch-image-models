@@ -66,7 +66,7 @@ class IAM(torch.optim.Optimizer):
         
         return
     
-    def step(self, closure: LossClosure=None, loss: torch.Tensor=None, lb: float=None):
+    def step(self, closure: LossClosure=None, loss: torch.Tensor=None, lb: torch.Tensor=None):
         """
         Performs a single optimization step.
 
@@ -131,7 +131,7 @@ class IAM(torch.optim.Optimizer):
                 lmbda = self._number_steps      # lmbda_t = t
                 
             ### Compute adaptive step size
-            this_lb = self.lb if not lb else lb
+            this_lb = self.lb if not lb else lb.item()
             t1 = loss.item() - this_lb + _dot1 - _dot2
             eta = max(t1, 0) / _norm
             eta = eta.item() # make scalar
