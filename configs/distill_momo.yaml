@@ -21,9 +21,7 @@ crop_pct: 1.0
 
 # Optimizer
 lr: 1.0
-opt: iam
-opt_kwargs: {'lmbda': null}
-# opt_kwargs: {'lmbda': 9.0}
+opt: momo
 weight_decay: 0.00001
 run_id: 0
 

@@ -31,7 +31,9 @@ from .sgdw import SGDW
 
 from .momo import Momo
 from .iam import IAM
+from .momsps import MomSPS
 from momo import MomoAdam
+
 
 
 _logger = logging.getLogger(__name__)
@@ -309,9 +311,10 @@ def create_optimizer_v2(
 
     # IAM
     elif opt_lower == 'iam':
-        if opt_args.get('lmbda') == 'None':
-            opt_args['lmbda'] = None
-        optimizer = IAM(parameters, **opt_args)    
+        optimizer = IAM(parameters, **opt_args)   
+    elif opt_lower == 'momsps':
+        optimizer = MomSPS(parameters, **opt_args)
+
 
     # adaptive
     elif opt_lower == 'adam':

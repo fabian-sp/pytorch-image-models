@@ -845,6 +845,12 @@ def main():
     output_dir = None
     opt_run_name = args.model + '_' + args.opt + '_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_run_' + str(args.run_id)
 
+    if args.opt == 'momentumw':
+        opt_run_name += '_step_' + str(args.decay_epochs)
+
+    if args.opt == 'iam':
+        opt_run_name += '_lmbda_' + str(args.opt_kwargs['lmbda'])
+
     if utils.is_primary(args):
         if args.experiment:
             exp_name = args.experiment
@@ -1136,7 +1142,7 @@ def train_one_epoch(
                             mode=args.clip_mode,
                         )
                     
-                    if args.opt in ['iam', 'momo']:
+                    if args.opt in ['iam', 'momo', 'momsps']:
                         this_lb = teacher_losses[idxs].mean()
 
                         # reduce loss and lb if we have distributed setup

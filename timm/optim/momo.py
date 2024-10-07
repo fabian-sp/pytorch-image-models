@@ -1,6 +1,8 @@
 """
 Implements the MoMo algorithm.
 
+Diff to official implementation: if we pass a lb argument in .step(), then we use the theoretical lower bound value from the paper.
+
 Authors: Fabian Schaipp, Ruben Ohana, Michael Eickenberg, Aaron Defazio, Robert Gower
 """
 import torch
@@ -66,7 +68,7 @@ class Momo(torch.optim.Optimizer):
         
         return
         
-    def step(self, closure: LossClosure=None, loss=None, lb: float=None) -> OptFloat:
+    def step(self, closure: LossClosure=None, loss: torch.Tensor=None, lb: torch.Tensor=None) -> OptFloat:
         """
         Performs a single optimization step.
 
@@ -78,7 +80,7 @@ class Momo(torch.optim.Optimizer):
         loss : torch.tensor, optional
             The loss tensor. Use this when the backward step has already been performed. By default None.
         
-        lb : float, optional
+        lb : torch.tensor, optional
             The optimal value for this batch of data. If None, the use the general lower bound from initialization.
 
         Returns
@@ -108,7 +110,7 @@ class Momo(torch.optim.Optimizer):
                 self.loss_avg = loss.detach().clone()
 
             if lb:
-                self.lb = lb if not self.bias_correction else 0.
+                self.lb = lb.item() if not self.bias_correction else 0.
         
         self.loss_avg = beta*self.loss_avg + (1-beta)*loss.detach()        
 
@@ -117,9 +119,9 @@ class Momo(torch.optim.Optimizer):
         else:
             rho = 1
         
-        # compute EMA lower bound according to paper, if optimal batch loss is given
+        # compute EMA lower bound according to paper, if optimal batch lower bound is given
         if lb:
-            self.lb = (beta*self.lb + (1-beta)*lb)/rho
+            self.lb = (beta*self.lb + (1-beta)*lb.item())/rho
             
         _dot = 0.
         _gamma = 0.

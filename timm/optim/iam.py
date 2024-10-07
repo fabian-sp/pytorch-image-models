@@ -41,9 +41,9 @@ class IAM(torch.optim.Optimizer):
         if lmbda is not None:
             if lmbda < 0.0:
                 raise ValueError("Invalid lambda value: {}".format(lmbda))
-            self._theoretical_lmbda = False
+            self._adapt_lmbda = False
         else:
-            self._theoretical_lmbda = True
+            self._adapt_lmbda = True
 
         if weight_decay < 0.0:
             raise ValueError("Invalid weight decay: {}".format(weight_decay))
@@ -123,12 +123,8 @@ class IAM(torch.optim.Optimizer):
         # Update
         for group in self.param_groups:
             lr = group['lr']
-            lmbda = group['lmbda'] 
+            lmbda = group['lmbda']
             weight_decay = group['weight_decay']
-            
-            # compute lmbda_t
-            if self._theoretical_lmbda:
-                lmbda = self._number_steps      # lmbda_t = t
                 
             ### Compute adaptive step size
             this_lb = self.lb if not lb else lb.item()
@@ -137,15 +133,19 @@ class IAM(torch.optim.Optimizer):
             eta = eta.item() # make scalar
             tau = min(lr, eta)
             
-            ### Weighted avergae for momentum (adapted from ScheduleFree)
-            # lr_max = group['lr_max'] = max(tau, group['lr_max'])
-            # weight = tau #lr_max**2
-            # weight_sum = group['weight_sum'] = group['weight_sum'] + weight
-            
-            # try:
-            #     ctp1 = weight/weight_sum
-            # except ZeroDivisionError:
-            #     ctp1 = 0
+            # if self._adapt_lmbda:
+            #     ### Weighted average for momentum (adapted from ScheduleFree)
+            #     lr_max = group['lr_max'] = max(tau, group['lr_max'])
+            #     weight = tau**2 #lr_max**2
+            #     weight_sum = group['weight_sum'] = group['weight_sum'] + weight
+                
+            #     try:
+            #         ctp1 = weight/weight_sum
+            #     except ZeroDivisionError:
+            #         ctp1 = 0
+
+            if self._adapt_lmbda:
+                lmbda = min(self._number_steps, 1000.0)
 
             ### Update params
             for p in group['params']:   
@@ -154,7 +154,7 @@ class IAM(torch.optim.Optimizer):
 
                 z = state['z']
                 if weight_decay > 0.0:
-                    z.add_(p.data, alpha= (-lr*weight_decay))  # z = z - lr*wd*x
+                    z.add_(p.data, alpha=(-tau*weight_decay))  # z = z - lr*wd*x
                 
                 # z Update
                 z.add_(grad, alpha=-tau)
