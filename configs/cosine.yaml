@@ -4,13 +4,12 @@ experiment: schedules
 model: resnet50
 data_dir: /tmp/imagenet 
 
-epochs: 20
-batch_size: 64
+epochs: 100
+batch_size: 256
 
-sched: wsd
-warmup_epochs: 2
-cooldown_epochs: 15
-#sched_on_updates: true
+sched: cosine
+warmup_epochs: 5
+sched_on_updates: true
 
 # Data and Model
 hflip: 0.5

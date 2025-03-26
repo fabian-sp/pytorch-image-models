@@ -89,7 +89,7 @@ def create_scheduler_v2(
     warmup_t = warmup_epochs
     decay_t = decay_epochs
     cooldown_t = cooldown_epochs
-    cooldown_start = num_epochs - cooldown_t    # needed for WSD
+    cooldown_start = num_epochs - cooldown_t - 1  # needed for WSD (0-indexed)
 
     if not step_on_epochs:
         assert updates_per_epoch > 0, 'updates_per_epoch must be set to number of dataloader batches'
@@ -150,7 +150,6 @@ def create_scheduler_v2(
             final_lr=min_lr,
             total_t=t_initial,
             t_in_epochs=step_on_epochs,
-            **cycle_args,
             **warmup_args,
             **noise_args,
         )

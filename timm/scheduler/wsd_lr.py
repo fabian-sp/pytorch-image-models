@@ -42,7 +42,7 @@ class WSDScheduler(Scheduler):
             initialize=initialize,
         )
 
-        self.cooldown_t = cooldown_t
+        self.cooldown_t = cooldown_t # start iter of cooldown
         self.total_t = total_t
         assert total_t > cooldown_t, "Total length must be larger than cooldown start"
         self.final_lr = final_lr
@@ -64,6 +64,8 @@ class WSDScheduler(Scheduler):
             if t < self.cooldown_t:
                 lrs = [v for v in self.base_values] # constant
             else:
+                # t and cooldown_t are 0-indexed, total_t is 1-indexed
+                # such that in final epoch we still did not reach zero (but would in next step)
                 a_t = (t-self.cooldown_t)/(self.total_t - self.cooldown_t)
-                lrs = [v * a_t * (1-self.final_lr) for v in self.base_values] # cooldown
+                lrs = [v * (1 - a_t*(1-self.final_lr)) for v in self.base_values] # cooldown
         return lrs

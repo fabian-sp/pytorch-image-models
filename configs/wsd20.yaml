@@ -5,12 +5,12 @@ model: resnet50
 data_dir: /tmp/imagenet 
 
 epochs: 100
-batch_size: 64
+batch_size: 256
 
 sched: wsd
 warmup_epochs: 5
 cooldown_epochs: 20
-#sched_on_updates: true
+sched_on_updates: true
 
 # Data and Model
 hflip: 0.5
@@ -19,7 +19,7 @@ crop_pct: 1.0
 
 # Optimizer
 lr: 0.1
-opt: momentumw
+opt: momentum
 momentum: 0.9
 weight_decay: 0.0001
 run_id: 0
@@ -27,4 +27,4 @@ run_id: 0
 # Other
 workers: 16
 log_wandb: true
-wandb_project_name: lr-schedules-imagenet
+wandb_project: lr-schedules-imagenet
