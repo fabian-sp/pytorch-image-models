@@ -1,7 +1,8 @@
+import pytest
 import torch
 import torch.nn as nn
 
-from timm.layers import create_act_layer, set_layer_config
+from timm.layers import create_act_layer, set_layer_config, get_act_layer, get_act_fn, Attention2d, MultiQueryAttentionV2
 
 import importlib
 import os
@@ -76,3 +77,84 @@ def test_hard_swish_grad():
 def test_hard_mish_grad():
     for _ in range(100):
         _run_act_layer_grad('hard_mish')
+
+def test_get_act_layer_empty_string():
+    # Empty string should return None
+    assert get_act_layer('') is None
+
+
+def test_create_act_layer_inplace_error():
+    class NoInplaceAct(nn.Module):
+        def __init__(self):
+            super().__init__()
+        def forward(self, x):
+            return x
+    
+    # Should recover when inplace arg causes TypeError
+    layer = create_act_layer(NoInplaceAct, inplace=True)
+    assert isinstance(layer, NoInplaceAct)
+
+
+def test_create_act_layer_edge_cases():
+    # Test None input
+    assert create_act_layer(None) is None
+    
+    # Test TypeError handling for inplace
+    class CustomAct(nn.Module):
+        def __init__(self, **kwargs):
+            super().__init__()
+        def forward(self, x):
+            return x
+            
+    result = create_act_layer(CustomAct, inplace=True)
+    assert isinstance(result, CustomAct)
+
+
+def test_get_act_fn_callable():
+    def custom_act(x): 
+        return x
+    assert get_act_fn(custom_act) is custom_act
+
+
+def test_get_act_fn_none():
+    assert get_act_fn(None) is None
+    assert get_act_fn('') is None
+
+
+@pytest.mark.parametrize("dim", [128])
+@pytest.mark.parametrize("dim_out", [128, 256])
+@pytest.mark.parametrize("use_m", [True, False])
+def test_mqa_v2(dim, dim_out, use_m):
+    mqa = MultiQueryAttentionV2(dim, dim_out)
+    
+    x = torch.randn(1, dim, 32, 48)
+    if use_m:
+        m = torch.randn(1, dim, 16, 24)
+    else:
+        m = None
+        
+    y = mqa(x, m=m)
+    
+    assert (y.shape) == (1, dim_out, 32, 48)
+
+
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("expand_first", [True, False])
+@pytest.mark.parametrize("head_first", [True, False])
+@pytest.mark.parametrize("attn_mask", [True, False])
+def test_attn2d(bias, expand_first, head_first, attn_mask):
+    x = torch.randn(1, 128, 32, 48)
+    attn = Attention2d(
+        128, 128, num_heads=4, bias=bias, expand_first=expand_first, head_first=head_first
+    )
+    
+    if attn_mask:
+        mask = torch.randint(0, 1, size=(32 * 48, 32 * 48), dtype=torch.float32)
+    else:
+        mask = None
+    
+    o1 = attn(x, mask)
+    attn.fused_attn = False
+    o2 = attn(x, mask)
+    
+    assert torch.allclose(o1, o2, atol=1e-5), f"{torch.abs(o1 - o2).max()}"

@@ -1,14 +1,9 @@
-""" Optimizer Factory w/ Custom Weight Decay
-Hacked together by / Copyright 2021 Ross Wightman
-"""
-import logging
-from itertools import islice
-from typing import Optional, Callable, Tuple
+# lots of uses of these functions directly, ala 'import timm.optim.optim_factory as optim_factory', fun :/
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
+from ._optim_factory import create_optimizer, create_optimizer_v2, optimizer_kwargs
+from ._param_groups import param_groups_layer_decay, param_groups_weight_decay, group_parameters, _layer_map, _group
 
+<<<<<<< HEAD
 from timm.models import group_parameters
 
 from .adabelief import AdaBelief
@@ -427,3 +422,7 @@ def create_optimizer_v2(
             optimizer = Lookahead(optimizer)
 
     return optimizer
+=======
+import warnings
+warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.optim", FutureWarning)
+>>>>>>> main

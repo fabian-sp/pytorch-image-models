@@ -21,11 +21,11 @@ from typing import Callable, List, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint as checkpoint
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.layers import DropPath, to_2tuple, to_ntuple, trunc_normal_, LayerNorm, use_fused_attn
 from ._builder import build_model_with_cfg
+from ._manipulate import checkpoint
 from ._registry import register_model, generate_default_cfgs
 
 __all__ = ['PyramidVisionTransformerV2']
@@ -384,7 +384,7 @@ class PyramidVisionTransformerV2(nn.Module):
         if global_pool is not None:
             assert global_pool in ('avg', '')
             self.global_pool = global_pool
-        self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
         x = self.patch_embed(x)

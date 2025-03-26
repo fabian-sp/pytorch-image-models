@@ -8,7 +8,8 @@ from .blur_pool import BlurPool2d, create_aa
 from .classifier import create_classifier, ClassifierHead, NormMlpClassifierHead, ClNormMlpClassifierHead
 from .cond_conv2d import CondConv2d, get_condconv_initializer
 from .config import is_exportable, is_scriptable, is_no_jit, use_fused_attn, \
-    set_exportable, set_scriptable, set_no_jit, set_layer_config, set_fused_attn
+    set_exportable, set_scriptable, set_no_jit, set_layer_config, set_fused_attn, \
+    set_reentrant_ckpt, use_reentrant_ckpt
 from .conv2d_same import Conv2dSame, conv2d_same
 from .conv_bn_act import ConvNormAct, ConvNormActAa, ConvBnAct
 from .create_act import create_act_layer, get_act_layer, get_act_fn
@@ -34,7 +35,7 @@ from .linear import Linear
 from .mixed_conv2d import MixedConv2d
 from .mlp import Mlp, GluMlp, GatedMlp, SwiGLU, SwiGLUPacked, ConvMlp, GlobalResponseNormMlp
 from .non_local_attn import NonLocalAttn, BatNonLocalAttn
-from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d, RmsNorm
+from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d, RmsNorm, RmsNorm2d, SimpleNorm, SimpleNorm2d
 from .norm_act import BatchNormAct2d, GroupNormAct, GroupNorm1Act, LayerNormAct, LayerNormAct2d,\
     SyncBatchNormAct, convert_sync_batchnorm, FrozenBatchNormAct2d, freeze_batch_norm_2d, unfreeze_batch_norm_2d
 from .padding import get_padding, get_same_padding, pad_same

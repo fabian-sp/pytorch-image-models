@@ -62,7 +62,7 @@ class ActivationStatsHook:
     Inspiration from https://docs.fast.ai/callback.hook.html.
 
     Refer to https://gist.github.com/amaarora/6e56942fcb46e67ba203f3009b30d950 for an example 
-    on how to plot Signal Propogation Plots using `ActivationStatsHook`.
+    on how to plot Signal Propagation Plots using `ActivationStatsHook`.
     """
 
     def __init__(self, model, hook_fn_locs, hook_fns):
@@ -96,7 +96,7 @@ def extract_spp_stats(
         hook_fns,
         input_shape=[8, 3, 224, 224]):
     """Extract average square channel mean and variance of activations during 
-    forward pass to plot Signal Propogation Plots (SPP).
+        forward pass to plot Signal Propagation Plots (SPP).
     
     Paper: https://arxiv.org/abs/2101.08692
 
@@ -111,7 +111,8 @@ def extract_spp_stats(
 def _freeze_unfreeze(root_module, submodules=[], include_bn_running_stats=True, mode='freeze'):
     """
     Freeze or unfreeze parameters of the specified modules and those of all their hierarchical descendants. This is
-    done in place.
+        done in place.
+
     Args:
         root_module (nn.Module, optional): Root module relative to which the `submodules` are referenced.
         submodules (list[str]): List of modules for which the parameters will be (un)frozen. They are to be provided as
@@ -180,6 +181,7 @@ def _freeze_unfreeze(root_module, submodules=[], include_bn_running_stats=True, 
 def freeze(root_module, submodules=[], include_bn_running_stats=True):
     """
     Freeze parameters of the specified modules and those of all their hierarchical descendants. This is done in place.
+
     Args:
         root_module (nn.Module): Root module relative to which `submodules` are referenced.
         submodules (list[str]): List of modules for which the parameters will be frozen. They are to be provided as
@@ -214,6 +216,7 @@ def freeze(root_module, submodules=[], include_bn_running_stats=True):
 def unfreeze(root_module, submodules=[], include_bn_running_stats=True):
     """
     Unfreeze parameters of the specified modules and those of all their hierarchical descendants. This is done in place.
+
     Args:
         root_module (nn.Module): Root module relative to which `submodules` are referenced.
         submodules (list[str]): List of submodules for which the parameters will be (un)frozen. They are to be provided

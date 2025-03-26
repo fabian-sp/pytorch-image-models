@@ -30,7 +30,6 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.checkpoint import checkpoint
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 from timm.layers import PatchEmbed, Mlp, GluMlp, SwiGLU, LayerNorm, DropPath, PatchDropout, RotaryEmbeddingCat, \
@@ -39,6 +38,7 @@ from timm.layers import PatchEmbed, Mlp, GluMlp, SwiGLU, LayerNorm, DropPath, Pa
 
 from ._builder import build_model_with_cfg
 from ._features import feature_take_indices
+from ._manipulate import checkpoint
 from ._registry import generate_default_cfgs, register_model
 
 __all__ = ['Eva']
@@ -560,9 +560,11 @@ class Eva(nn.Module):
         if self.dynamic_img_size:
             B, H, W, C = x.shape
             if self.pos_embed is not None:
+                prev_grid_size = self.patch_embed.grid_size
                 pos_embed = resample_abs_pos_embed(
                     self.pos_embed,
-                    (H, W),
+                    new_size=(H, W),
+                    old_size=prev_grid_size,
                     num_prefix_tokens=self.num_prefix_tokens,
                 )
             else:
@@ -910,45 +912,52 @@ default_cfgs = generate_default_cfgs({
     # EVA01 and EVA02 CLIP image towers
     'eva_giant_patch14_clip_224.laion400m': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA01_CLIP_g_14_plus_psz14_s11B.pt',
-        hf_hub_id='timm/eva_giant_patch14_clip_224.laion400m_s11b_b41k',  # float16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva_giant_patch14_clip_224.laion400m_s11b_b41k',  # float16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         num_classes=1024,
     ),
     'eva_giant_patch14_clip_224.merged2b': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA01_CLIP_g_14_plus_psz14_s11B.pt',
-        hf_hub_id='timm/eva_giant_patch14_plus_clip_224.merged2b_s11b_b114k',  # float16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva_giant_patch14_plus_clip_224.merged2b_s11b_b114k',  # float16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         num_classes=1024,
     ),
     'eva02_base_patch16_clip_224.merged2b': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA02_CLIP_L_psz14_s4B.pt',
-        hf_hub_id='timm/eva02_base_patch16_clip_224.merged2b_s8b_b131k',  # float16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva02_base_patch16_clip_224.merged2b_s8b_b131k',  # float16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         num_classes=512,
     ),
     'eva02_large_patch14_clip_224.merged2b': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA02_CLIP_L_psz14_s4B.pt',
-        hf_hub_id='timm/eva02_large_patch14_clip_224.merged2b_s4b_b131k',  # float16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva02_large_patch14_clip_224.merged2b_s4b_b131k',  # float16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         num_classes=768,
     ),
     'eva02_large_patch14_clip_336.merged2b': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA02_CLIP_L_psz14_s4B.pt',
-        hf_hub_id='timm/eva02_large_patch14_clip_336.merged2b_s6b_b61k',  # float16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva02_large_patch14_clip_336.merged2b_s6b_b61k',  # float16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         input_size=(3, 336, 336), crop_pct=1.0,
         num_classes=768,
     ),
     'eva02_enormous_patch14_clip_224.laion2b': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA02_CLIP_E_psz14_plus_s9B.pt',
-        hf_hub_id='timm/eva02_enormous_patch14_clip_224.laion2b_s4b_b115k',  # float16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva02_enormous_patch14_clip_224.laion2b_s4b_b115k',  # float16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         num_classes=1024,
     ),
     'eva02_enormous_patch14_clip_224.laion2b_plus': _cfg(
         # hf_hub_id='QuanSun/EVA-CLIP', hf_hub_filename='EVA02_CLIP_E_psz14_plus_s9B.pt',
-        hf_hub_id='timm/eva02_enormous_patch14_plus_clip_224.laion2b_s9b_b144k',  # bfloat16 weights
-        hf_hub_filename='open_clip_pytorch_model.bin',
+        # hf_hub_id='timm/eva02_enormous_patch14_plus_clip_224.laion2b_s9b_b144k',  # bfloat16 weights
+        # hf_hub_filename='open_clip_pytorch_model.bin',
+        hf_hub_id='timm/',
         num_classes=1024,
     ),
     'eva02_enormous_patch14_clip_224.pretrain': _cfg(

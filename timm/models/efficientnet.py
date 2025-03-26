@@ -41,16 +41,16 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.checkpoint import checkpoint
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
-from timm.layers import create_conv2d, create_classifier, get_norm_act_layer, GroupNormAct, LayerType
+from timm.layers import create_conv2d, create_classifier, get_norm_act_layer, LayerType, \
+    GroupNormAct, LayerNormAct2d, EvoNorm2dS0
 from ._builder import build_model_with_cfg, pretrained_cfg_for_features
 from ._efficientnet_blocks import SqueezeExcite
 from ._efficientnet_builder import BlockArgs, EfficientNetBuilder, decode_arch_def, efficientnet_init_weights, \
     round_channels, resolve_bn_args, resolve_act_layer, BN_EPS_TF_DEFAULT
 from ._features import FeatureInfo, FeatureHooks, feature_take_indices
-from ._manipulate import checkpoint_seq
+from ._manipulate import checkpoint_seq, checkpoint
 from ._registry import generate_default_cfgs, register_model, register_model_deprecations
 
 __all__ = ['EfficientNet', 'EfficientNetFeatures']
@@ -1803,7 +1803,18 @@ default_cfgs = generate_default_cfgs({
 
     "test_efficientnet.r160_in1k": _cfg(
         hf_hub_id='timm/',
-        input_size=(3, 160, 160), pool_size=(5, 5)),
+        input_size=(3, 160, 160), pool_size=(5, 5), crop_pct=0.95),
+    "test_efficientnet_ln.r160_in1k": _cfg(
+        hf_hub_id='timm/',
+        input_size=(3, 160, 160), pool_size=(5, 5), crop_pct=0.95),
+    "test_efficientnet_gn.r160_in1k": _cfg(
+        hf_hub_id='timm/',
+        mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5),
+        input_size=(3, 160, 160), pool_size=(5, 5), crop_pct=0.95),
+    "test_efficientnet_evos.r160_in1k": _cfg(
+        hf_hub_id='timm/',
+        mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5),
+        input_size=(3, 160, 160), pool_size=(5, 5), crop_pct=0.95),
 })
 
 
@@ -2789,6 +2800,27 @@ def mobilenet_edgetpu_v2_l(pretrained=False, **kwargs) -> EfficientNet:
 @register_model
 def test_efficientnet(pretrained=False, **kwargs) -> EfficientNet:
     model = _gen_test_efficientnet('test_efficientnet', pretrained=pretrained, **kwargs)
+    return model
+
+
+@register_model
+def test_efficientnet_gn(pretrained=False, **kwargs) -> EfficientNet:
+    model = _gen_test_efficientnet(
+        'test_efficientnet_gn', pretrained=pretrained, norm_layer=partial(GroupNormAct, group_size=8), **kwargs)
+    return model
+
+
+@register_model
+def test_efficientnet_ln(pretrained=False, **kwargs) -> EfficientNet:
+    model = _gen_test_efficientnet(
+        'test_efficientnet_ln', pretrained=pretrained, norm_layer=LayerNormAct2d, **kwargs)
+    return model
+
+
+@register_model
+def test_efficientnet_evos(pretrained=False, **kwargs) -> EfficientNet:
+    model = _gen_test_efficientnet(
+        'test_efficientnet_evos', pretrained=pretrained, norm_layer=partial(EvoNorm2dS0, group_size=8), **kwargs)
     return model
 
 

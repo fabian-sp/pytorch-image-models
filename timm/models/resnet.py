@@ -16,8 +16,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.layers import DropBlock2d, DropPath, AvgPool2dSame, BlurPool2d, GroupNorm, LayerType, create_attn, \
-    get_attn, get_act_layer, get_norm_layer, create_classifier, create_aa
+from timm.layers import DropBlock2d, DropPath, AvgPool2dSame, BlurPool2d, LayerType, create_attn, \
+    get_attn, get_act_layer, get_norm_layer, create_classifier, create_aa, to_ntuple
 from ._builder import build_model_with_cfg
 from ._features import feature_take_indices
 from ._manipulate import checkpoint_seq
@@ -286,7 +286,7 @@ def drop_blocks(drop_prob: float = 0.):
 
 
 def make_blocks(
-        block_fn: Union[BasicBlock, Bottleneck],
+        block_fns: Tuple[Union[BasicBlock, Bottleneck]],
         channels: Tuple[int, ...],
         block_repeats: Tuple[int, ...],
         inplanes: int,
@@ -304,7 +304,7 @@ def make_blocks(
     net_block_idx = 0
     net_stride = 4
     dilation = prev_dilation = 1
-    for stage_idx, (planes, num_blocks, db) in enumerate(zip(channels, block_repeats, drop_blocks(drop_block_rate))):
+    for stage_idx, (block_fn, planes, num_blocks, db) in enumerate(zip(block_fns, channels, block_repeats, drop_blocks(drop_block_rate))):
         stage_name = f'layer{stage_idx + 1}'  # never liked this name, but weight compat requires it
         stride = 1 if stage_idx == 0 else 2
         if net_stride >= output_stride:
@@ -490,8 +490,9 @@ class ResNet(nn.Module):
                 self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         # Feature Blocks
+        block_fns = to_ntuple(len(channels))(block)
         stage_modules, stage_feature_info = make_blocks(
-            block,
+            block_fns,
             channels,
             layers,
             inplanes,
@@ -513,7 +514,7 @@ class ResNet(nn.Module):
         self.feature_info.extend(stage_feature_info)
 
         # Head (Pooling and Classifier)
-        self.num_features = self.head_hidden_size = channels[-1] * block.expansion
+        self.num_features = self.head_hidden_size = channels[-1] * block_fns[-1].expansion
         self.global_pool, self.fc = create_classifier(self.num_features, self.num_classes, pool_type=global_pool)
 
         self.init_weights(zero_init_last=zero_init_last)
@@ -710,6 +711,9 @@ default_cfgs = generate_default_cfgs({
         hf_hub_id='timm/',
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-weights/resnet18d_ra2-48a79e06.pth',
         first_conv='conv1.0'),
+    'resnet18d.ra4_e3600_r224_in1k': _rcfg(
+        hf_hub_id='timm/',
+        mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), crop_pct=0.9, first_conv='conv1.0'),
     'resnet34.a1_in1k': _rcfg(
         hf_hub_id='timm/',
         url='https://github.com/huggingface/pytorch-image-models/releases/download/v0.1-rsb-weights/resnet34_a1_0-46f8f793.pth'),
@@ -723,6 +727,9 @@ default_cfgs = generate_default_cfgs({
     'resnet34.bt_in1k': _ttcfg(
         hf_hub_id='timm/',
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-weights/resnet34-43635321.pth'),
+    'resnet34.ra4_e3600_r224_in1k': _rcfg(
+        hf_hub_id='timm/',
+        mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), crop_pct=0.9),
     'resnet34d.ra2_in1k': _ttcfg(
         hf_hub_id='timm/',
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-weights/resnet34d_ra2-f8dcfcaf.pth',
@@ -848,15 +855,15 @@ default_cfgs = generate_default_cfgs({
     # torchvision resnet weights
     'resnet18.tv_in1k': _cfg(
         hf_hub_id='timm/',
-        url='https://download.pytorch.org/models/resnet18-5c106cde.pth',
+        url='https://download.pytorch.org/models/resnet18-f37072fd.pth',
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet34.tv_in1k': _cfg(
         hf_hub_id='timm/',
-        url='https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+        url='https://download.pytorch.org/models/resnet34-b627a593.pth',
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet50.tv_in1k': _cfg(
         hf_hub_id='timm/',
-        url='https://download.pytorch.org/models/resnet50-19c8e357.pth',
+        url='https://download.pytorch.org/models/resnet50-0676ba61.pth',
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet50.tv2_in1k': _cfg(
         hf_hub_id='timm/',
@@ -865,7 +872,7 @@ default_cfgs = generate_default_cfgs({
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet101.tv_in1k': _cfg(
         hf_hub_id='timm/',
-        url='https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+        url='https://download.pytorch.org/models/resnet101-63fe2227.pth',
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet101.tv2_in1k': _cfg(
         hf_hub_id='timm/',
@@ -874,7 +881,7 @@ default_cfgs = generate_default_cfgs({
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet152.tv_in1k': _cfg(
         hf_hub_id='timm/',
-        url='https://download.pytorch.org/models/resnet152-b121ed2d.pth',
+        url='https://download.pytorch.org/models/resnet152-394f9c45.pth',
         license='bsd-3-clause', origin_url='https://github.com/pytorch/vision'),
     'resnet152.tv2_in1k': _cfg(
         hf_hub_id='timm/',
@@ -1301,6 +1308,11 @@ default_cfgs = generate_default_cfgs({
         hf_hub_id='timm/',
         url='https://github.com/rwightman/pytorch-pretrained-gluonresnet/releases/download/v0.1/gluon_senet154-70a1a3c0.pth',
         first_conv='conv1.0'),
+
+    'test_resnet.r160_in1k': _cfg(
+        hf_hub_id='timm/',
+        mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), crop_pct=0.95,
+        input_size=(3, 160, 160), pool_size=(5, 5), first_conv='conv1.0'),
 })
 
 
@@ -2038,6 +2050,16 @@ def resnetrs420(pretrained: bool = False, **kwargs) -> ResNet:
         block=Bottleneck, layers=(4, 44, 87, 4), stem_width=32, stem_type='deep', replace_stem_pool=True,
         avg_down=True,  block_args=dict(attn_layer=attn_layer))
     return _create_resnet('resnetrs420', pretrained, **dict(model_args, **kwargs))
+
+
+@register_model
+def test_resnet(pretrained: bool = False, **kwargs) -> ResNet:
+    """Constructs a tiny ResNet test model.
+    """
+    model_args = dict(
+        block=[BasicBlock, BasicBlock, Bottleneck, BasicBlock], layers=(1, 1, 1, 1),
+        stem_width=16, stem_type='deep', avg_down=True, channels=(32, 48, 48, 96))
+    return _create_resnet('test_resnet', pretrained, **dict(model_args, **kwargs))
 
 
 register_model_deprecations(__name__, {

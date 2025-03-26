@@ -35,14 +35,23 @@ class AdaBelief(Optimizer):
 
     For a complete table of recommended hyperparameters, see https://github.com/juntang-zhuang/Adabelief-Optimizer'
     For example train/args for EfficientNet see these gists
-      - link to train_scipt: https://gist.github.com/juntang-zhuang/0a501dd51c02278d952cf159bc233037
+      - link to train_script: https://gist.github.com/juntang-zhuang/0a501dd51c02278d952cf159bc233037
       - link to args.yaml: https://gist.github.com/juntang-zhuang/517ce3c27022b908bb93f78e4f786dc3
     """
 
     def __init__(
-            self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-16, weight_decay=0, amsgrad=False,
-            decoupled_decay=True, fixed_decay=False, rectify=True, degenerated_to_sgd=True):
-
+            self,
+            params,
+            lr=1e-3,
+            betas=(0.9, 0.999),
+            eps=1e-16,
+            weight_decay=0,
+            amsgrad=False,
+            decoupled_decay=True,
+            fixed_decay=False,
+            rectify=True,
+            degenerated_to_sgd=True,
+    ):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if not 0.0 <= eps:
@@ -58,9 +67,17 @@ class AdaBelief(Optimizer):
                     param['buffer'] = [[None, None, None] for _ in range(10)]
 
         defaults = dict(
-            lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad,
-            degenerated_to_sgd=degenerated_to_sgd, decoupled_decay=decoupled_decay, rectify=rectify,
-            fixed_decay=fixed_decay, buffer=[[None, None, None] for _ in range(10)])
+            lr=lr,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+            amsgrad=amsgrad,
+            degenerated_to_sgd=degenerated_to_sgd,
+            decoupled_decay=decoupled_decay,
+            rectify=rectify,
+            fixed_decay=fixed_decay,
+            buffer=[[None, None, None] for _ in range(10)]
+        )
         super(AdaBelief, self).__init__(params, defaults)
 
     def __setstate__(self, state):

@@ -349,6 +349,7 @@ class RDNet(nn.Module):
         return self.head.fc
 
     def reset_classifier(self, num_classes: int, global_pool: Optional[str] = None):
+        self.num_classes = num_classes
         self.head.reset(num_classes, global_pool)
 
     def forward_features(self, x):
@@ -361,7 +362,7 @@ class RDNet(nn.Module):
 
     def forward(self, x):
         x = self.forward_features(x)
-        x = self.head(x)
+        x = self.forward_head(x)
         return x
 
     @torch.jit.ignore

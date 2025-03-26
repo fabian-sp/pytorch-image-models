@@ -34,14 +34,13 @@ from typing import Tuple, Optional, List, Union, Any, Type
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint as checkpoint
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.layers import DropPath, Mlp, ClassifierHead, to_2tuple, _assert, ndgrid
 from ._builder import build_model_with_cfg
 from ._features import feature_take_indices
 from ._features_fx import register_notrace_function
-from ._manipulate import named_apply
+from ._manipulate import named_apply, checkpoint
 from ._registry import generate_default_cfgs, register_model
 
 __all__ = ['SwinTransformerV2Cr']  # model_registry will add each entrypoint fn to this
@@ -445,7 +444,7 @@ class PatchMerging(nn.Module):
         """
         B, H, W, C = x.shape
 
-        pad_values = (0, 0, 0, H % 2, 0, W % 2)
+        pad_values = (0, 0, 0, W % 2, 0, H % 2)
         x = nn.functional.pad(x, pad_values)
         _, H, W, _ = x.shape
 

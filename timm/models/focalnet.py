@@ -22,12 +22,11 @@ from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.layers import Mlp, DropPath, LayerNorm2d, trunc_normal_, ClassifierHead, NormMlpClassifierHead
 from ._builder import build_model_with_cfg
-from ._manipulate import named_apply
+from ._manipulate import named_apply, checkpoint
 from ._registry import generate_default_cfgs, register_model
 
 __all__ = ['FocalNet']
@@ -79,7 +78,7 @@ class FocalModulation(nn.Module):
         x = self.f(x)
         q, ctx, gates = torch.split(x, self.input_split, 1)
 
-        # context aggreation
+        # context aggregation
         ctx_all = 0
         for l, focal_layer in enumerate(self.focal_layers):
             ctx = focal_layer(ctx)
@@ -354,7 +353,7 @@ class FocalNet(nn.Module):
             focal_levels: How many focal levels at all stages. Note that this excludes the finest-grain level.
             focal_windows: The focal window size at all stages.
             use_overlap_down: Whether to use convolutional embedding.
-            use_post_norm: Whether to use layernorm after modulation (it helps stablize training of large models)
+            use_post_norm: Whether to use layernorm after modulation (it helps stabilize training of large models)
             layerscale_value: Value for layer scale.
             drop_rate: Dropout rate.
             drop_path_rate: Stochastic depth rate.
@@ -456,6 +455,7 @@ class FocalNet(nn.Module):
         return self.head.fc
 
     def reset_classifier(self, num_classes: int, global_pool: Optional[str] = None):
+        self.num_classes = num_classes
         self.head.reset(num_classes, pool_type=global_pool)
 
     def forward_features(self, x):

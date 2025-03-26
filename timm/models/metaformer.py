@@ -541,7 +541,7 @@ class MetaFormer(nn.Module):
                 **kwargs,
             )]
             prev_dim = dims[i]
-            self.feature_info += [dict(num_chs=dims[i], reduction=2, module=f'stages.{i}')]
+            self.feature_info += [dict(num_chs=dims[i], reduction=2**(i+2), module=f'stages.{i}')]
 
         self.stages = nn.Sequential(*stages)
 
@@ -584,6 +584,7 @@ class MetaFormer(nn.Module):
         return self.head.fc
 
     def reset_classifier(self, num_classes: int, global_pool: Optional[str] = None):
+        self.num_classes = num_classes
         if global_pool is not None:
             self.head.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
             self.head.flatten = nn.Flatten(1) if global_pool else nn.Identity()
@@ -618,7 +619,7 @@ class MetaFormer(nn.Module):
         return x
 
 
-# this works but it's long and breaks backwards compatability with weights from the poolformer-only impl
+# this works but it's long and breaks backwards compatibility with weights from the poolformer-only impl
 def checkpoint_filter_fn(state_dict, model):
     if 'stem.conv.weight' in state_dict:
         return state_dict

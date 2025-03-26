@@ -4,7 +4,7 @@ A PyTorch implementation of ResNetV2 adapted from the Google Big-Transfer (BiT) 
 at https://github.com/google-research/big_transfer to match timm interfaces. The BiT weights have
 been included here as pretrained models from their original .NPZ checkpoints.
 
-Additionally, supports non pre-activation bottleneck for use as a backbone for Vision Transfomers (ViT) and
+Additionally, supports non pre-activation bottleneck for use as a backbone for Vision Transformers (ViT) and
 extra padding support to allow porting of official Hybrid ResNet pretrained weights from
 https://github.com/google-research/vision_transformer
 
@@ -46,6 +46,69 @@ from ._registry import generate_default_cfgs, register_model, register_model_dep
 __all__ = ['ResNetV2']  # model_registry will add each entrypoint fn to this
 
 
+class PreActBasic(nn.Module):
+    """ Pre-activation basic block (not in typical 'v2' implementations)
+    """
+
+    def __init__(
+            self,
+            in_chs,
+            out_chs=None,
+            bottle_ratio=1.0,
+            stride=1,
+            dilation=1,
+            first_dilation=None,
+            groups=1,
+            act_layer=None,
+            conv_layer=None,
+            norm_layer=None,
+            proj_layer=None,
+            drop_path_rate=0.,
+    ):
+        super().__init__()
+        first_dilation = first_dilation or dilation
+        conv_layer = conv_layer or StdConv2d
+        norm_layer = norm_layer or partial(GroupNormAct, num_groups=32)
+        out_chs = out_chs or in_chs
+        mid_chs = make_divisible(out_chs * bottle_ratio)
+
+        if proj_layer is not None and (stride != 1 or first_dilation != dilation or in_chs != out_chs):
+            self.downsample = proj_layer(
+                in_chs,
+                out_chs,
+                stride=stride,
+                dilation=dilation,
+                first_dilation=first_dilation,
+                preact=True,
+                conv_layer=conv_layer,
+                norm_layer=norm_layer,
+            )
+        else:
+            self.downsample = None
+
+        self.norm1 = norm_layer(in_chs)
+        self.conv1 = conv_layer(in_chs, mid_chs, 3, stride=stride, dilation=first_dilation, groups=groups)
+        self.norm2 = norm_layer(mid_chs)
+        self.conv2 = conv_layer(mid_chs, out_chs, 3, dilation=dilation, groups=groups)
+        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0 else nn.Identity()
+
+    def zero_init_last(self):
+        nn.init.zeros_(self.conv3.weight)
+
+    def forward(self, x):
+        x_preact = self.norm1(x)
+
+        # shortcut branch
+        shortcut = x
+        if self.downsample is not None:
+            shortcut = self.downsample(x_preact)
+
+        # residual branch
+        x = self.conv1(x_preact)
+        x = self.conv2(self.norm2(x))
+        x = self.drop_path(x)
+        return x + shortcut
+
 
 class PreActBottleneck(nn.Module):
     """Pre-activation (v2) bottleneck block.
@@ -80,8 +143,15 @@ class PreActBottleneck(nn.Module):
 
         if proj_layer is not None:
             self.downsample = proj_layer(
-                in_chs, out_chs, stride=stride, dilation=dilation, first_dilation=first_dilation, preact=True,
-                conv_layer=conv_layer, norm_layer=norm_layer)
+                in_chs,
+                out_chs,
+                stride=stride,
+                dilation=dilation,
+                first_dilation=first_dilation,
+                preact=True,
+                conv_layer=conv_layer,
+                norm_layer=norm_layer,
+            )
         else:
             self.downsample = None
 
@@ -140,8 +210,14 @@ class Bottleneck(nn.Module):
 
         if proj_layer is not None:
             self.downsample = proj_layer(
-                in_chs, out_chs, stride=stride, dilation=dilation, preact=False,
-                conv_layer=conv_layer, norm_layer=norm_layer)
+                in_chs,
+                out_chs,
+                stride=stride,
+                dilation=dilation,
+                preact=False,
+                conv_layer=conv_layer,
+                norm_layer=norm_layer,
+            )
         else:
             self.downsample = None
 
@@ -339,6 +415,8 @@ class ResNetV2(nn.Module):
             stem_type='',
             avg_down=False,
             preact=True,
+            basic=False,
+            bottle_ratio=0.25,
             act_layer=nn.ReLU,
             norm_layer=partial(GroupNormAct, num_groups=32),
             conv_layer=StdConv2d,
@@ -358,7 +436,7 @@ class ResNetV2(nn.Module):
             stem_chs (int): stem width (default: 64)
             stem_type (str): stem type (default: '' == 7x7)
             avg_down (bool): average pooling in residual downsampling (default: False)
-            preact (bool): pre-activiation (default: True)
+            preact (bool): pre-activation (default: True)
             act_layer (Union[str, nn.Module]): activation layer
             norm_layer (Union[str, nn.Module]): normalization layer
             conv_layer (nn.Module): convolution module
@@ -390,7 +468,11 @@ class ResNetV2(nn.Module):
         curr_stride = 4
         dilation = 1
         block_dprs = [x.tolist() for x in torch.linspace(0, drop_path_rate, sum(layers)).split(layers)]
-        block_fn = PreActBottleneck if preact else Bottleneck
+        if preact:
+            block_fn = PreActBasic if basic else PreActBottleneck
+        else:
+            assert not basic
+            block_fn = Bottleneck
         self.stages = nn.Sequential()
         for stage_idx, (d, c, bdpr) in enumerate(zip(layers, channels, block_dprs)):
             out_chs = make_divisible(c * wf)
@@ -404,6 +486,7 @@ class ResNetV2(nn.Module):
                 stride=stride,
                 dilation=dilation,
                 depth=d,
+                bottle_ratio=bottle_ratio,
                 avg_down=avg_down,
                 act_layer=act_layer,
                 conv_layer=conv_layer,
@@ -613,6 +696,24 @@ default_cfgs = generate_default_cfgs({
         hf_hub_id='timm/',
         num_classes=21843, custom_load=True),
 
+    'resnetv2_18.ra4_e3600_r224_in1k': _cfg(
+        hf_hub_id='timm/',
+        interpolation='bicubic', crop_pct=0.9, test_input_size=(3, 288, 288), test_crop_pct=1.0),
+    'resnetv2_18d.ra4_e3600_r224_in1k': _cfg(
+        hf_hub_id='timm/',
+        interpolation='bicubic', crop_pct=0.9, test_input_size=(3, 288, 288), test_crop_pct=1.0,
+        first_conv='stem.conv1'),
+    'resnetv2_34.ra4_e3600_r224_in1k': _cfg(
+        hf_hub_id='timm/',
+        interpolation='bicubic', crop_pct=0.9, test_input_size=(3, 288, 288), test_crop_pct=1.0),
+    'resnetv2_34d.ra4_e3600_r224_in1k': _cfg(
+        hf_hub_id='timm/',
+        interpolation='bicubic', crop_pct=0.9, test_input_size=(3, 288, 288), test_crop_pct=1.0,
+        first_conv='stem.conv1'),
+    'resnetv2_34d.ra4_e3600_r384_in1k': _cfg(
+        hf_hub_id='timm/',
+        crop_pct=1.0, input_size=(3, 384, 384), pool_size=(12, 12), test_input_size=(3, 448, 448),
+        interpolation='bicubic', first_conv='stem.conv1'),
     'resnetv2_50.a1h_in1k': _cfg(
         hf_hub_id='timm/',
         interpolation='bicubic', crop_pct=0.95, test_input_size=(3, 288, 288), test_crop_pct=1.0),
@@ -677,6 +778,42 @@ def resnetv2_152x2_bit(pretrained=False, **kwargs) -> ResNetV2:
 def resnetv2_152x4_bit(pretrained=False, **kwargs) -> ResNetV2:
     return _create_resnetv2_bit(
         'resnetv2_152x4_bit', pretrained=pretrained, layers=[3, 8, 36, 3], width_factor=4, **kwargs)
+
+
+@register_model
+def resnetv2_18(pretrained=False, **kwargs) -> ResNetV2:
+    model_args = dict(
+        layers=[2, 2, 2, 2], channels=(64, 128, 256, 512), basic=True, bottle_ratio=1.0,
+        conv_layer=create_conv2d, norm_layer=BatchNormAct2d
+    )
+    return _create_resnetv2('resnetv2_18', pretrained=pretrained, **dict(model_args, **kwargs))
+
+
+@register_model
+def resnetv2_18d(pretrained=False, **kwargs) -> ResNetV2:
+    model_args = dict(
+        layers=[2, 2, 2, 2], channels=(64, 128, 256, 512), basic=True, bottle_ratio=1.0,
+        conv_layer=create_conv2d, norm_layer=BatchNormAct2d, stem_type='deep', avg_down=True
+    )
+    return _create_resnetv2('resnetv2_18d', pretrained=pretrained, **dict(model_args, **kwargs))
+
+
+@register_model
+def resnetv2_34(pretrained=False, **kwargs) -> ResNetV2:
+    model_args = dict(
+        layers=(3, 4, 6, 3), channels=(64, 128, 256, 512), basic=True, bottle_ratio=1.0,
+        conv_layer=create_conv2d, norm_layer=BatchNormAct2d
+    )
+    return _create_resnetv2('resnetv2_34', pretrained=pretrained, **dict(model_args, **kwargs))
+
+
+@register_model
+def resnetv2_34d(pretrained=False, **kwargs) -> ResNetV2:
+    model_args = dict(
+        layers=(3, 4, 6, 3), channels=(64, 128, 256, 512), basic=True, bottle_ratio=1.0,
+        conv_layer=create_conv2d, norm_layer=BatchNormAct2d, stem_type='deep', avg_down=True
+    )
+    return _create_resnetv2('resnetv2_34d', pretrained=pretrained, **dict(model_args, **kwargs))
 
 
 @register_model

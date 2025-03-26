@@ -556,19 +556,19 @@ class DaVit(nn.Module):
 
         dpr = [x.tolist() for x in torch.linspace(0, drop_path_rate, sum(depths)).split(depths)]
         stages = []
-        for stage_idx in range(num_stages):
-            out_chs = embed_dims[stage_idx]
+        for i in range(num_stages):
+            out_chs = embed_dims[i]
             stage = DaVitStage(
                 in_chs,
                 out_chs,
-                depth=depths[stage_idx],
-                downsample=stage_idx > 0,
+                depth=depths[i],
+                downsample=i > 0,
                 attn_types=attn_types,
-                num_heads=num_heads[stage_idx],
+                num_heads=num_heads[i],
                 window_size=window_size,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias,
-                drop_path_rates=dpr[stage_idx],
+                drop_path_rates=dpr[i],
                 norm_layer=norm_layer,
                 norm_layer_cl=norm_layer_cl,
                 ffn=ffn,
@@ -579,7 +579,7 @@ class DaVit(nn.Module):
             )
             in_chs = out_chs
             stages.append(stage)
-            self.feature_info += [dict(num_chs=out_chs, reduction=2, module=f'stages.{stage_idx}')]
+            self.feature_info += [dict(num_chs=out_chs, reduction=2**(i+2), module=f'stages.{i}')]
 
         self.stages = nn.Sequential(*stages)
 
@@ -633,6 +633,7 @@ class DaVit(nn.Module):
         return self.head.fc
 
     def reset_classifier(self, num_classes: int, global_pool: Optional[str] = None):
+        self.num_classes = num_classes
         self.head.reset(num_classes, global_pool)
 
     def forward_features(self, x):
@@ -710,10 +711,12 @@ def checkpoint_filter_fn(state_dict, model):
 def _create_davit(variant, pretrained=False, **kwargs):
     default_out_indices = tuple(i for i, _ in enumerate(kwargs.get('depths', (1, 1, 3, 1))))
     out_indices = kwargs.pop('out_indices', default_out_indices)
-    strict = True
+
+    strict = kwargs.pop('pretrained_strict', True)
     if variant.endswith('_fl'):
         # FIXME cleaner approach to missing head norm?
         strict = False
+
     model = build_model_with_cfg(
         DaVit,
         variant,

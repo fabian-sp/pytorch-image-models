@@ -12,7 +12,6 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.checkpoint import checkpoint
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from timm.layers import SelectAdaptivePool2d, Linear, LayerType, PadType, create_conv2d, get_norm_act_layer
@@ -21,7 +20,7 @@ from ._efficientnet_blocks import SqueezeExcite
 from ._efficientnet_builder import BlockArgs, EfficientNetBuilder, decode_arch_def, efficientnet_init_weights, \
     round_channels, resolve_bn_args, resolve_act_layer, BN_EPS_TF_DEFAULT
 from ._features import FeatureInfo, FeatureHooks, feature_take_indices
-from ._manipulate import checkpoint_seq
+from ._manipulate import checkpoint_seq, checkpoint
 from ._registry import generate_default_cfgs, register_model, register_model_deprecations
 
 __all__ = ['MobileNetV3', 'MobileNetV3Features']
@@ -1011,12 +1010,24 @@ default_cfgs = generate_default_cfgs({
     ),
     "lcnet_150.untrained": _cfg(),
 
+    'mobilenetv4_conv_small_035.untrained': _cfg(
+        mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD,
+        test_input_size=(3, 256, 256), test_crop_pct=0.95, interpolation='bicubic'),
+    'mobilenetv4_conv_small_050.e3000_r224_in1k': _cfg(
+        hf_hub_id='timm/',
+        mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD,
+        test_input_size=(3, 256, 256), test_crop_pct=0.95, interpolation='bicubic'),
     'mobilenetv4_conv_small.e2400_r224_in1k': _cfg(
         hf_hub_id='timm/',
         test_input_size=(3, 256, 256), test_crop_pct=0.95, interpolation='bicubic'),
     'mobilenetv4_conv_small.e1200_r224_in1k': _cfg(
         hf_hub_id='timm/',
         test_input_size=(3, 256, 256), test_crop_pct=0.95, interpolation='bicubic'),
+    'mobilenetv4_conv_small.e3600_r256_in1k': _cfg(
+        hf_hub_id='timm/',
+        mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD,
+        input_size=(3, 256, 256), pool_size=(8, 8), crop_pct=0.95,
+        test_input_size=(3, 320, 320), test_crop_pct=1.0, interpolation='bicubic'),
     'mobilenetv4_conv_medium.e500_r256_in1k': _cfg(
         hf_hub_id='timm/',
         input_size=(3, 256, 256), pool_size=(8, 8),
@@ -1024,6 +1035,27 @@ default_cfgs = generate_default_cfgs({
     'mobilenetv4_conv_medium.e500_r224_in1k': _cfg(
         hf_hub_id='timm/',
         crop_pct=0.95, test_input_size=(3, 256, 256), test_crop_pct=1.0, interpolation='bicubic'),
+
+    'mobilenetv4_conv_medium.e250_r384_in12k_ft_in1k': _cfg(
+        hf_hub_id='timm/',
+        input_size=(3, 384, 384), pool_size=(12, 12),
+        crop_pct=0.95, interpolation='bicubic'),
+    'mobilenetv4_conv_medium.e180_r384_in12k': _cfg(
+        hf_hub_id='timm/',
+        num_classes=11821,
+        input_size=(3, 384, 384), pool_size=(12, 12),
+        crop_pct=1.0, interpolation='bicubic'),
+    'mobilenetv4_conv_medium.e180_ad_r384_in12k': _cfg(
+        hf_hub_id='timm/',
+        num_classes=11821,
+        input_size=(3, 384, 384), pool_size=(12, 12),
+        crop_pct=1.0, interpolation='bicubic'),
+    'mobilenetv4_conv_medium.e250_r384_in12k': _cfg(
+        hf_hub_id='timm/',
+        num_classes=11821,
+        input_size=(3, 384, 384), pool_size=(12, 12),
+        crop_pct=1.0, interpolation='bicubic'),
+
     'mobilenetv4_conv_large.e600_r384_in1k': _cfg(
         hf_hub_id='timm/',
         input_size=(3, 384, 384), pool_size=(12, 12),
@@ -1250,6 +1282,20 @@ def lcnet_100(pretrained: bool = False, **kwargs) -> MobileNetV3:
 def lcnet_150(pretrained: bool = False, **kwargs) -> MobileNetV3:
     """ PP-LCNet 1.5"""
     model = _gen_lcnet('lcnet_150', 1.5, pretrained=pretrained, **kwargs)
+    return model
+
+
+@register_model
+def mobilenetv4_conv_small_035(pretrained: bool = False, **kwargs) -> MobileNetV3:
+    """ MobileNet V4 """
+    model = _gen_mobilenet_v4('mobilenetv4_conv_small_035', 0.35, pretrained=pretrained, **kwargs)
+    return model
+
+
+@register_model
+def mobilenetv4_conv_small_050(pretrained: bool = False, **kwargs) -> MobileNetV3:
+    """ MobileNet V4 """
+    model = _gen_mobilenet_v4('mobilenetv4_conv_small_050', 0.50, pretrained=pretrained, **kwargs)
     return model
 
 

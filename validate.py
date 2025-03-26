@@ -34,13 +34,6 @@ try:
 except ImportError:
     has_apex = False
 
-has_native_amp = False
-try:
-    if getattr(torch.cuda.amp, 'autocast') is not None:
-        has_native_amp = True
-except AttributeError:
-    pass
-
 try:
     from functorch.compile import memory_efficient_fusion
     has_functorch = True
@@ -73,6 +66,8 @@ parser.add_argument('--input-img-mode', default=None, type=str,
                    help='Dataset image conversion mode for input images.')
 parser.add_argument('--target-key', default=None, type=str,
                    help='Dataset key for target labels.')
+parser.add_argument('--dataset-trust-remote-code', action='store_true', default=False,
+                   help='Allow huggingface dataset import to execute code downloaded from the dataset\'s repo.')
 
 parser.add_argument('--model', '-m', metavar='NAME', default='dpn92',
                     help='model architecture (default: dpn92)')
@@ -86,8 +81,8 @@ parser.add_argument('--img-size', default=None, type=int,
                     metavar='N', help='Input image dimension, uses model default if empty')
 parser.add_argument('--in-chans', type=int, default=None, metavar='N',
                     help='Image input channels (default: None => 3)')
-parser.add_argument('--input-size', default=None, nargs=3, type=int,
-                    metavar='N N N', help='Input all image dimensions (d h w, e.g. --input-size 3 224 224), uses model default if empty')
+parser.add_argument('--input-size', default=None, nargs=3, type=int, metavar='N',
+                    help='Input all image dimensions (d h w, e.g. --input-size 3 224 224), uses model default if empty')
 parser.add_argument('--use-train-size', action='store_true', default=False,
                     help='force use of train input size, even when test size is specified in pretrained cfg')
 parser.add_argument('--crop-pct', default=None, type=float,
@@ -128,6 +123,8 @@ parser.add_argument('--amp-dtype', default='float16', type=str,
                     help='lower precision AMP dtype (default: float16)')
 parser.add_argument('--amp-impl', default='native', type=str,
                     help='AMP impl to use, "native" or "apex" (default: native)')
+parser.add_argument('--model-dtype', default=None, type=str,
+                   help='Model dtype override (non-AMP) (default: float32)')
 parser.add_argument('--tf-preprocessing', action='store_true', default=False,
                     help='Use Tensorflow preprocessing pipeline (require CPU TF installed')
 parser.add_argument('--use-ema', dest='use_ema', action='store_true',
@@ -139,7 +136,8 @@ parser.add_argument('--fast-norm', default=False, action='store_true',
 parser.add_argument('--reparam', default=False, action='store_true',
                     help='Reparameterize model')
 parser.add_argument('--model-kwargs', nargs='*', default={}, action=ParseKwargs)
-
+parser.add_argument('--torchcompile-mode', type=str, default=None,
+                    help="torch.compile mode (default: None).")
 
 scripting_group = parser.add_mutually_exclusive_group()
 scripting_group.add_argument('--torchscript', default=False, action='store_true',
@@ -172,24 +170,29 @@ def validate(args):
 
     device = torch.device(args.device)
 
+    model_dtype = None
+    if args.model_dtype:
+        assert args.model_dtype in ('float32', 'float16', 'bfloat16')
+        model_dtype = getattr(torch, args.model_dtype)
+
     # resolve AMP arguments based on PyTorch / Apex availability
     use_amp = None
     amp_autocast = suppress
     if args.amp:
+        assert model_dtype is None or model_dtype == torch.float32, 'float32 model dtype must be used with AMP'
         if args.amp_impl == 'apex':
             assert has_apex, 'AMP impl specified as APEX but APEX is not installed.'
             assert args.amp_dtype == 'float16'
             use_amp = 'apex'
             _logger.info('Validating in mixed precision with NVIDIA APEX AMP.')
         else:
-            assert has_native_amp, 'Please update PyTorch to a version with native AMP (or use APEX).'
             assert args.amp_dtype in ('float16', 'bfloat16')
             use_amp = 'native'
             amp_dtype = torch.bfloat16 if args.amp_dtype == 'bfloat16' else torch.float16
             amp_autocast = partial(torch.autocast, device_type=device.type, dtype=amp_dtype)
             _logger.info('Validating in mixed precision with native PyTorch AMP.')
     else:
-        _logger.info('Validating in float32. AMP not enabled.')
+        _logger.info(f'Validating in {model_dtype or torch.float32}. AMP not enabled.')
 
     if args.fuser:
         set_jit_fuser(args.fuser)
@@ -236,7 +239,7 @@ def validate(args):
     if args.test_pool:
         model, test_time_pool = apply_test_time_pool(model, data_config)
 
-    model = model.to(device)
+    model = model.to(device=device, dtype=model_dtype)  # FIXME move model device & dtype into create_model
     if args.channels_last:
         model = model.to(memory_format=torch.channels_last)
 
@@ -246,7 +249,7 @@ def validate(args):
     elif args.torchcompile:
         assert has_compile, 'A version of torch w/ torch.compile() is required for --compile, possibly a nightly.'
         torch._dynamo.reset()
-        model = torch.compile(model, backend=args.torchcompile)
+        model = torch.compile(model, backend=args.torchcompile, mode=args.torchcompile_mode)
     elif args.aot_autograd:
         assert has_functorch, "functorch is needed for --aot-autograd"
         model = memory_efficient_fusion(model)
@@ -275,6 +278,7 @@ def validate(args):
         input_key=args.input_key,
         input_img_mode=input_img_mode,
         target_key=args.target_key,
+        trust_remote_code=args.dataset_trust_remote_code,
     )
 
     if args.valid_labels:
@@ -303,6 +307,7 @@ def validate(args):
         crop_border_pixels=args.crop_border_pixels,
         pin_memory=args.pin_mem,
         device=device,
+        img_dtype=model_dtype or torch.float32,
         tf_preprocessing=args.tf_preprocessing,
     )
 
@@ -314,7 +319,7 @@ def validate(args):
     model.eval()
     with torch.no_grad():
         # warmup, reduce variability of first batch time, especially for comparing torchscript vs non
-        input = torch.randn((args.batch_size,) + tuple(data_config['input_size'])).to(device)
+        input = torch.randn((args.batch_size,) + tuple(data_config['input_size'])).to(device=device, dtype=model_dtype)
         if args.channels_last:
             input = input.contiguous(memory_format=torch.channels_last)
         with amp_autocast():
@@ -323,8 +328,8 @@ def validate(args):
         end = time.time()
         for batch_idx, (input, target) in enumerate(loader):
             if args.no_prefetcher:
-                target = target.to(device)
-                input = input.to(device)
+                target = target.to(device=device)
+                input = input.to(device=device, dtype=model_dtype)
             if args.channels_last:
                 input = input.contiguous(memory_format=torch.channels_last)
 
@@ -394,8 +399,10 @@ def _try_run(args, initial_batch_size):
     while batch_size:
         args.batch_size = batch_size * args.num_gpu  # multiply by num-gpu for DataParallel case
         try:
-            if torch.cuda.is_available() and 'cuda' in args.device:
+            if 'cuda' in args.device and torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            elif "npu" in args.device and torch.npu.is_available():
+                torch.npu.empty_cache()
             results = validate(args)
             return results
         except RuntimeError as e:
@@ -405,6 +412,7 @@ def _try_run(args, initial_batch_size):
                 break
         batch_size = decay_batch_step(batch_size)
         _logger.warning(f'Reducing batch size to {batch_size} for retry.')
+    results['model'] = args.model
     results['error'] = error_str
     _logger.error(f'{args.model} failed to validate ({error_str}).')
     return results
