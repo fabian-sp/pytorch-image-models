@@ -11,7 +11,7 @@ from .plateau_lr import PlateauLRScheduler
 from .poly_lr import PolyLRScheduler
 from .step_lr import StepLRScheduler
 from .tanh_lr import TanhLRScheduler
-
+from .wsd_lr import WSDScheduler
 
 def scheduler_kwargs(cfg, decreasing_metric: Optional[bool] = None):
     """ cfg/argparse to kwargs helper
@@ -89,6 +89,7 @@ def create_scheduler_v2(
     warmup_t = warmup_epochs
     decay_t = decay_epochs
     cooldown_t = cooldown_epochs
+    cooldown_start = num_epochs - cooldown_t    # needed for WSD
 
     if not step_on_epochs:
         assert updates_per_epoch > 0, 'updates_per_epoch must be set to number of dataloader batches'
@@ -97,6 +98,7 @@ def create_scheduler_v2(
         decay_t = decay_t * updates_per_epoch
         decay_milestones = [d * updates_per_epoch for d in decay_milestones]
         cooldown_t = cooldown_t * updates_per_epoch
+        cooldown_start = cooldown_start * updates_per_epoch
 
     # warmup args
     warmup_args = dict(
@@ -140,6 +142,17 @@ def create_scheduler_v2(
             **warmup_args,
             **noise_args,
             k_decay=k_decay,
+        )
+    elif sched == 'wsd':
+        lr_scheduler = WSDScheduler(
+            optimizer,
+            cooldown_t=cooldown_start,
+            final_lr=min_lr,
+            total_t=t_initial,
+            t_in_epochs=step_on_epochs,
+            **cycle_args,
+            **warmup_args,
+            **noise_args,
         )
     elif sched == 'tanh':
         lr_scheduler = TanhLRScheduler(

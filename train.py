@@ -847,7 +847,12 @@ def main():
     saver = None
 
     output_dir = None
-    opt_run_name = args.model + '_' + args.opt + '_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_run_' + str(args.run_id)
+    opt_run_name = args.model + '_' + args.opt + '_lr_' + str(args.lr)  + '_wd_' + str(args.weight_decay) + '_b_' + str(args.batch_size) + '_epochs_' + str(args.epochs)  + '_sched_' + str(args.sched) 
+    
+    if args.sched == 'wsd':
+        opt_run_name += str(float(args.cooldown_epochs/args.epochs))
+    
+    opt_run_name += ('_run_' + str(args.run_id))
 
     if utils.is_primary(args):
         if args.experiment:
