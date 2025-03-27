@@ -73,3 +73,21 @@ def l2_norm(model: torch.nn.Module):
     for p in model.parameters():
         w += (p**2).sum()
     return torch.sqrt(w).item()
+
+# @torch.no_grad()
+def get_grad_norm(model):
+    grad_parameters = [p for p in model.parameters() if p.grad is not None]
+    if len(grad_parameters) == 0:
+        total_norm = 0.0
+    else:
+        total_norm = (
+            torch.sum(
+                torch.stack(
+                    [p.grad.detach().data.norm(2) ** 2 for p in grad_parameters]
+                )
+            ).item()
+            ** 0.5
+        )
+    return total_norm
+
+        

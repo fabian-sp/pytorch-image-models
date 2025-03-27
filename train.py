@@ -44,7 +44,7 @@ from timm.models import create_model, safe_model_name, resume_checkpoint, load_c
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.utils import ApexScaler, NativeScaler
-from timm.utils.summary import l2_norm
+from timm.utils.summary import l2_norm, get_grad_norm
 
 try:
     from apex import amp
@@ -1110,6 +1110,7 @@ def train_one_epoch(
     update_time_m = utils.AverageMeter()
     data_time_m = utils.AverageMeter()
     losses_m = utils.AverageMeter()
+    grad_norm_m = utils.AverageMeter()
 
     model.train()
 
@@ -1189,7 +1190,10 @@ def train_one_epoch(
             loss = _forward()
             _backward(loss)
 
+        # store grad norm (after clipping)
+        this_grad_norm = get_grad_norm(model)
         losses_m.update(loss.item() * accum_steps, input.size(0))
+        grad_norm_m.update(this_grad_norm * accum_steps, input.size(0))
         update_sample_count += input.size(0)
 
         if not need_update:
@@ -1255,11 +1259,13 @@ def train_one_epoch(
         optimizer.sync_lookahead()
 
     loss_avg = losses_m.avg
+    grad_norm_avg = grad_norm_m.avg # should already be synced
     if args.distributed:
         # synchronize avg loss, each process keeps its own running avg
         loss_avg = torch.tensor([loss_avg], device=device, dtype=torch.float32)
         loss_avg = utils.reduce_tensor(loss_avg, args.world_size).item()
-    return OrderedDict([('loss', loss_avg)])
+        
+    return OrderedDict([('loss', loss_avg), ('grad_norm', grad_norm_avg)])
 
 
 def validate(
