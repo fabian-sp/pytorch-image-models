@@ -98,44 +98,51 @@ if save:
 
 
 #%% training curves
+ALL_METRICS = ["train_loss", "val_loss", "val_score", "learning_rate"]
+SHOW_BEST = 3
+
+best = base_df[base_df.epoch==base_df.epoch.max()].groupby('lr_schedule')['val_loss'].nsmallest(SHOW_BEST)
+ixx = base_df.id[best.index.levels[1]]
+df1 = base_df.loc[base_df.id.isin(ixx),:].sort_values(["lr_schedule", "lr", "epoch"])
 
 reds = sns.color_palette("Reds", 5)[2:]
 blues = sns.color_palette("Blues", 5)[2:]
 
-metric = "val_loss"
 
-fig, ax = plt.subplots(1,2,figsize=FIGSIZE11)
+for metric in ALL_METRICS:
+    fig, ax = plt.subplots(1,1,figsize=FIGSIZE11)
+    counters = {"cosine": 0, "wsd": 0}
 
-best = base_df[base_df.epoch==base_df.epoch.max()].groupby('lr_schedule')['val_loss'].nsmallest(3)
-ixx = base_df.id[best.index.levels[1]]
-df1 = base_df.loc[base_df.id.isin(ixx),:].sort_values(["id", "epoch", "lr"])
+    for id in df1.id.unique():
+        this = df1[df1.id == id]
+        this_sched = this.lr_schedule.values[0]
+        this_lr = this.lr.values[0]
 
-counters = {"cosine": 0, "wsd": 0}
+        col = reds[counters[this_sched]] if this_sched=="cosine" else blues[counters[this_sched]]
+        counters[this_sched] += 1
 
-for id in df1.id.unique():
-    this = df1[df1.id == id]
-    this_sched = this.lr_schedule.values[0]
+        ax.plot(this.epoch,
+                this[metric],
+                c=col,
+                label=f"{this_sched}, " + r"$\gamma = %.2f$" % this_lr
+        )
+
+    ax.set_xlabel(r'Epoch')
+    ax.set_ylabel(ylabel_map[metric])
+    if metric == "train_loss":
+        ax.set_ylim(1.5, 3.8)
+    elif metric == "val_loss":
+        ax.set_ylim(0.9, 3.8)
+    elif metric == "val_score":
+        ax.set_ylim(0.37, 0.82)
+
+    ax.grid(axis='both', lw=0.2, ls='--', zorder=0)
+    ax.legend(loc="upper right" if metric != "val_score" else "lower left", fontsize=8, ncol=2, framealpha=0.9)
+
+    fig.subplots_adjust(top=0.98,
+    bottom=0.15,
+    left=0.17,
+    right=0.99,)
+    if save:
+        fig.savefig(f'plots/{exp_id}/{metric}.pdf')
     
-    col = reds[counters[this_sched]] if this_sched=="cosine" else blues[counters[this_sched]]
-    counters[this_sched] += 1
-
-    ax.plot(this.epoch,
-            this[metric],
-            c=col
-    )
-
-ax.set_xlabel(r'Epoch')
-ax.set_ylabel(ylabel_map[metric])
-if metric == "train_loss":
-    ax.set_ylim(1.5, 3.8)
-elif metric == "val_loss":
-    ax.set_ylim(0.9, 3.8)
-
-ax.grid(axis='both', lw=0.2, ls='--', zorder=0)
-
-fig.subplots_adjust(top=0.98,
-bottom=0.15,
-left=0.18,
-right=0.99,)
-if save:
-    fig.savefig(f'plots/{exp_id}/{metric}.pdf')
