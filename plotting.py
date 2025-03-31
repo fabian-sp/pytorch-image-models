@@ -1,5 +1,7 @@
 """
 Script for generating stability plot.
+
+NOTE: schedule field for linear-decay run was manually renamed.
 """
 from matplotlib import pyplot as plt
 import pandas as pd
@@ -66,11 +68,12 @@ metric = "val_loss"
 final = base_df[base_df.epoch==MAX_EPOCH].groupby(["lr_schedule", "lr"], as_index=False)[metric].min()
 
 fig, ax = plt.subplots(1,1,figsize=FIGSIZE11)
+ax.grid(axis='both', lw=0.2, ls='--', zorder=-1)
 
 colors = {"wsd": (0.06251441753171857, 0.35750865051903113, 0.6429065743944637),
           "cosine": (0.6943944636678201, 0.07003460207612457, 0.09231833910034601)}
 
-for sched in final["lr_schedule"].unique():
+for sched in ["cosine", "wsd"]:
     this = final[final["lr_schedule"] == sched]
     this = this.sort_values("lr")
     ax.plot(this.lr.astype("float"),
@@ -85,7 +88,7 @@ ax.set_xlabel(r'Base learning rate $\gamma$')
 ax.set_xscale("log", base=2)
 ax.set_xticks([0.05, 0.1, 0.2, 0.4], [0.05, 0.1, 0.2, 0.4])
 ax.set_ylabel(ylabel_map[metric])
-ax.grid(axis='both', lw=0.2, ls='--', zorder=0)
+ax.set_ylim(0.95, 1.16)
 ax.legend()
 
 fig.subplots_adjust(top=0.98,
@@ -107,25 +110,50 @@ df1 = base_df.loc[base_df.id.isin(ixx),:].sort_values(["lr_schedule", "lr", "epo
 
 reds = sns.color_palette("Reds", 5)[2:]
 blues = sns.color_palette("Blues", 5)[2:]
-
+green = "#C4D6B0"
 
 for metric in ALL_METRICS:
     fig, ax = plt.subplots(1,1,figsize=FIGSIZE11)
-    counters = {"cosine": 0, "wsd": 0}
+    ax.grid(axis='both', lw=0.2, ls='--', zorder=-1)
+    counters = {"cosine": 0, "wsd": 0, "linear-decay": 0}
 
     for id in df1.id.unique():
         this = df1[df1.id == id]
         this_sched = this.lr_schedule.values[0]
         this_lr = this.lr.values[0]
 
-        col = reds[counters[this_sched]] if this_sched=="cosine" else blues[counters[this_sched]]
+        if this_sched=="cosine":
+            col = reds[counters[this_sched]]
+        elif this_sched=="wsd":
+            col = blues[counters[this_sched]]
+        else:
+            col = green
+
         counters[this_sched] += 1
 
-        ax.plot(this.epoch,
+        if metric in ["learning_rate", "train_loss"]:
+            ax.plot(this.epoch,
+                    this[metric],
+                    c=col,
+                    label=f"{this_sched}, " + r"$\gamma = %.2f$" % this_lr
+            )
+
+        else:
+            # smoothed line
+            ax.plot(this.epoch,
+                this[metric].rolling(5).mean(),
+                c=col,
+                label=f"{this_sched}, " + r"$\gamma = %.2f$" % this_lr,
+                zorder=2
+            )
+            # original data
+            ax.plot(this.epoch,
                 this[metric],
                 c=col,
-                label=f"{this_sched}, " + r"$\gamma = %.2f$" % this_lr
-        )
+                lw=0.5,
+                alpha=0.6,
+                zorder=5
+            )
 
     ax.set_xlabel(r'Epoch')
     ax.set_ylabel(ylabel_map[metric])
@@ -136,7 +164,6 @@ for metric in ALL_METRICS:
     elif metric == "val_score":
         ax.set_ylim(0.37, 0.82)
 
-    ax.grid(axis='both', lw=0.2, ls='--', zorder=0)
     ax.legend(loc="upper right" if metric != "val_score" else "lower left", fontsize=8, ncol=2, framealpha=0.9)
 
     fig.subplots_adjust(top=0.98,
