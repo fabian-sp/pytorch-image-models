@@ -122,6 +122,9 @@ for metric in ALL_METRICS:
         this_sched = this.lr_schedule.values[0]
         this_lr = this.lr.values[0]
 
+        if metric == "val_loss" and this_sched == "linear-decay":
+            continue
+
         if this_sched=="cosine":
             col = reds[counters[this_sched]]
         elif this_sched=="wsd":
